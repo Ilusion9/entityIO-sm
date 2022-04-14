@@ -122,3 +122,41 @@ Address EntityIO_FindEntityFirstOutputAction(int entity, const char[] output);
  */
 Address EntityIO_FindEntityNextOutputAction(Address address);
 ```
+
+# Examples
+## Get entity output actions
+```sourcepawn
+public void OnPluginStart()
+{
+	HookEntityOutput("func_button", "OnPressed", Output_OnEntityOutput);
+}
+
+public void Output_OnEntityOutput(const char[] output, int caller, int activator, float delay)
+{
+	if (!IsValidEntity(caller))
+	{
+		return;
+	}
+	
+	Address address = EntityIO_FindEntityFirstOutputAction(entity, "m_OnPressed");
+	if (address != Address_Null)
+	{
+		do
+		{
+			char target[256];
+			EntityIO_GetEntityOutputActionTarget(address, target, sizeof(target));
+			
+			char input[256];
+			EntityIO_GetEntityOutputActionInput(address, input, sizeof(input));
+			
+			char params[256];
+			EntityIO_GetEntityOutputActionParam(address, params, sizeof(params));
+			
+			float delay = EntityIO_GetEntityOutputActionDelay(address);
+			int timesToFire = EntityIO_GetEntityOutputActionTimesToFire(address);
+			int IDStamp = EntityIO_GetEntityOutputActionID(address);
+		}
+		
+	} while ((address = EntityIO_FindEntityNextOutputAction(address)) != Address_Null);
+}
+```
