@@ -1,0 +1,95 @@
+"Games"
+{
+	"#default"
+	{
+		"Offsets"
+		{
+			"CBaseEntityOutput::m_ActionList"
+			{
+				"windows"		"20"
+				"linux"			"20"
+			}
+			
+			"CEventAction::m_iTarget"
+			{
+				"windows"		"0"
+				"linux"			"0"
+			}
+			
+			"CEventAction::m_iTargetInput"
+			{
+				"windows"		"4"
+				"linux"			"4"
+			}
+			
+			"CEventAction::m_iParameter"
+			{
+				"windows"		"8"
+				"linux"			"8"
+			}
+			
+			"CEventAction::m_flDelay"
+			{
+				"windows"		"12"
+				"linux"			"12"
+			}
+			
+			"CEventAction::m_nTimesToFire"
+			{
+				"windows"		"16"
+				"linux"			"16"
+			}
+			
+			"CEventAction::m_iIDStamp"
+			{
+				"windows"		"20"
+				"linux"			"20"
+			}
+			
+			"CEventAction::s_iNextIDStamp"
+			{
+				"windows"		"24"
+				"linux"			"24"
+			}
+		}
+	}
+	
+	"csgo"
+	{
+		"Offsets"
+		{
+			"CBaseEntity::AcceptInput"
+			{
+				"windows"		"41"
+				"linux"			"42"
+				"mac"			"42"
+			}
+		}
+	}
+	
+	"css"
+	{
+		"Offsets"
+		{
+			"CBaseEntity::AcceptInput"
+			{
+				"windows"		"36"
+				"linux"			"37"
+				"mac"			"37"
+			}
+		}
+	}
+	
+	"left4dead2"
+	{
+		"Offsets"
+		{
+			"CBaseEntity::AcceptInput"
+			{
+				"windows"		"44"
+				"linux"			"45"
+				"mac"			"45"
+			}
+		}
+	}
+}
