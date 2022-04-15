@@ -155,8 +155,8 @@ public void Output_OnEntityOutput(const char[] output, int caller, int activator
 			float delay = EntityIO_GetEntityOutputActionDelay(address);
 			int timesToFire = EntityIO_GetEntityOutputActionTimesToFire(address);
 			int IDStamp = EntityIO_GetEntityOutputActionID(address);
-		}
-		
-	} while ((address = EntityIO_FindEntityNextOutputAction(address)) != Address_Null);
+			
+		}  while ((address = EntityIO_FindEntityNextOutputAction(address)) != Address_Null);
+	}
 }
 ```
