@@ -18,7 +18,7 @@ public void Output_OnEntityOutput(const char[] output, int caller, int activator
 	}
 	
 	// has entity this output?
-	if (EntityIO_HasEntityInput(caller, "Use"))
+	if (EntityIO_HasEntityOutput(caller, "OnPressed"))
 	{
 		PrintToServer("(func_button) Found \"OnPressed\" output for func_button.");
 	}
