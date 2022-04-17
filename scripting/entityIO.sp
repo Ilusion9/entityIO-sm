@@ -627,21 +627,25 @@ public int Native_FindEntityFirstOutputAction(Handle plugin, int numParams)
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid entity index %d", entity);
 	}
 	
-	Address address = GetEntityAddress(entity);
-	if (address == Address_Null)
-	{
-		return false;
-	}
-	
 	int offset = GetNativeCell(2);
 	if (offset == -1)
 	{
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid output offset %d", offset);
 	}
 	
-	address = view_as<Address>(LoadFromAddress(address + view_as<Address>(offset) + view_as<Address>(g_Offset_ActionList), NumberType_Int32));
-	SetNativeCellRef(3, address);
+	Address address = GetEntityAddress(entity);
+	if (address == Address_Null)
+	{
+		return false;
+	}
 	
+	address = view_as<Address>(LoadFromAddress(address + view_as<Address>(offset) + view_as<Address>(g_Offset_ActionList), NumberType_Int32));
+	if (address == Address_Null)
+	{
+		return false;
+	}
+	
+	SetNativeCellRef(3, address);
 	return true;
 }
 
