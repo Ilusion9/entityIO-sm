@@ -64,31 +64,53 @@
 				"linux"			"42"
 				"mac"			"42"
 			}
-		}
-	}
-	
-	"css"
-	{
-		"Offsets"
-		{
-			"CBaseEntity::AcceptInput"
+			
+			"CBaseEntity::GetDataDescMap"
 			{
-				"windows"		"36"
-				"linux"			"37"
-				"mac"			"37"
+				"windows"		"11"
+				"linux"			"12"
 			}
-		}
-	}
-	
-	"left4dead2"
-	{
-		"Offsets"
-		{
-			"CBaseEntity::AcceptInput"
+			
+			"datamap_t::dataDesc"
 			{
-				"windows"		"44"
-				"linux"			"45"
-				"mac"			"45"
+				"windows"		"0"
+				"linux"			"0"
+			}
+			
+			"datamap_t::baseMap"
+			{
+				"windows"		"12"
+				"linux"			"12"
+			}
+			
+			"datamap_t::dataNumFields"
+			{
+				"windows"		"4"
+				"linux"			"4"
+			}
+			
+			"typedescription_t::fieldOffset"
+			{
+				"windows"		"8"
+				"linux"			"8"
+			}
+			
+			"typedescription_t::flags"
+			{
+				"windows"		"14"
+				"linux"			"14"
+			}
+			
+			"typedescription_t::externalName"
+			{
+				"windows"		"16"
+				"linux"			"16"
+			}
+			
+			"sizeof::typedescription_t"
+			{
+				"windows"		"60"
+				"linux"			"60"
 			}
 		}
 	}
