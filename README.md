@@ -250,7 +250,7 @@ float EntityIO_GetEntityOutputActionDelay(Address address);
 ```
 
 # Examples
-## Inputs
+## Display Inputs
 ```sourcepawn
 	Address dataMap, address;
 	if (EntityIO_FindEntityFirstInput(entity, dataMap, address))
@@ -267,7 +267,7 @@ float EntityIO_GetEntityOutputActionDelay(Address address);
 }
 ```
 
-## Outputs
+## Display Outputs
 ```sourcepawn
 	Address dataMap, address;
 	if (EntityIO_FindEntityFirstOutput(entity, dataMap, address))
@@ -284,7 +284,7 @@ float EntityIO_GetEntityOutputActionDelay(Address address);
 }
 ```
 
-## Output Actions
+## Display Output Actions
 ```sourcepawn
 public void OnPluginStart()
 {
