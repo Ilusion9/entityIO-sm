@@ -257,10 +257,10 @@ float EntityIO_GetEntityOutputActionDelay(Address address);
 	{
 		do
 		{
-			char output[256];
-			EntityIO_GetEntityInputName(address, output, sizeof(output));
+			char input[256];
+			EntityIO_GetEntityInputName(address, input, sizeof(input));
 			
-			PrintToServer("Input: %s", output);
+			PrintToServer("Input: %s", input);
 			
 		} while (EntityIO_FindEntityNextInput(dataMap, address));
 	}
