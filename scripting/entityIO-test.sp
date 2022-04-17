@@ -18,7 +18,7 @@ public void Output_OnEntityOutput(const char[] output, int caller, int activator
 	}
 	
 	// has entity this output?
-	if (EntityIO_HasEntityOutput(caller, "OnPressed"))
+	if (EntityIO_HasEntityInput(caller, "Use"))
 	{
 		PrintToServer("(func_button) Found \"OnPressed\" output for func_button.");
 	}
@@ -99,10 +99,10 @@ void DisplayEntityInputs(int entity)
 	{
 		do
 		{
-			char output[256];
-			EntityIO_GetEntityInputName(address, output, sizeof(output));
+			char input[256];
+			EntityIO_GetEntityInputName(address, input, sizeof(input));
 			
-			PrintToServer("(func_button) Input: %s.", output);
+			PrintToServer("(func_button) Input: %s.", input);
 			
 		} while (EntityIO_FindEntityNextInput(dataMap, address));
 	}
