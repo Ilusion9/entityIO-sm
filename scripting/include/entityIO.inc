@@ -32,6 +32,144 @@ enum EntityIO_FieldType
 forward void EntityIO_OnEntityInput(int entity, const char[] input, int caller, int activator, EntityIO_FieldType paramType, any paramValue, const any[] paramArray, const char[] paramString, int outputId);
 
 /**
+ * Retrieves the first input's address from an entity.
+ *
+ * @param entity         Entity's index.
+ * @param dataMap        Datamap's address.
+ * @param address        Input's address.
+ * @error                Invalid entity index.
+ * @return               True if an input was found, false otherwise.
+ */
+native bool EntityIO_FindEntityFirstInput(int entity, Address& dataMap, Address& address);
+
+/**
+ * Retrieves the next input's address from an entity.
+ *
+ * @param dataMap        Datamap's address.
+ * @param address        Input's address.
+ * @error                Invalid datamap address, invalid address.
+ * @return               True if an input was found, false otherwise.
+ */
+native bool EntityIO_FindEntityNextInput(Address& dataMap, Address& address);
+
+/**
+ * Retrieves the first output's address from an entity.
+ *
+ * @param entity         Entity's index.
+ * @param dataMap        Datamap's address.
+ * @param address        Output's address.
+ * @error                Invalid entity index.
+ * @return               True if an output was found, false otherwise.
+ */
+native bool EntityIO_FindEntityFirstOutput(int entity, Address& dataMap, Address& address);
+
+/**
+ * Retrieves the next output's address from an entity.
+ *
+ * @param dataMap        Datamap's address.
+ * @param address        Output's address.
+ * @error                Invalid datamap address, invalid address.
+ * @return               True if an output was found, false otherwise.
+ */
+native bool EntityIO_FindEntityNextOutput(Address& dataMap, Address& address);
+
+/**
+ * Retrieves an output's offset.
+ *
+ * @param entity        Entity's index.
+ * @param output        Output's name.
+ * @error               Invalid entity index.
+ * @return              Output's offset, -1 on failure.
+ */
+native int EntityIO_FindEntityOutputOffset(int entity, const char[] output);
+
+/**
+ * Retrieves the first action's address from an entity's output.
+ *
+ * @param entity         Entity's index.
+ * @param offset         Output's offset.
+ * @param address        Action's address.
+ * @error                Invalid entity index, invalid output offset.
+ * @return               True if an action was found, false otherwise.
+ */
+native bool EntityIO_FindEntityFirstOutputAction(int entity, int offset, Address& address);
+
+/**
+ * Retrieves the next action's address from an entity's output.
+ *
+ * @param address        Action's address.
+ * @error                Invalid address.
+ * @return               True if an action was found, false otherwise.
+ */
+native bool EntityIO_FindEntityNextOutputAction(Address& address);
+
+/**
+ * Returns whether or not an input can be accepted by an entity.
+ *
+ * @param entity        Entity's index.
+ * @param input         Input's name.
+ * @error               Invalid entity index.
+ * @return              True if the input can be accepted, false otherwise.
+ */
+native bool EntityIO_HasEntityInput(int entity, const char[] input);
+
+/**
+ * Returns whether or not an output can be fired by an entity.
+ *
+ * @param entity        Entity's index.
+ * @param output        Output's name.
+ * @error               Invalid entity index.
+ * @return              True if the output can be fired, false otherwise.
+ */
+native bool EntityIO_HasEntityOutput(int entity, const char[] output);
+
+/**
+ * Adds an action to an entity's output.
+ *
+ * @param entity             Entity's index.
+ * @param output             Output's name.
+ * @param target             Action's target.
+ * @param input              Action's input.
+ * @param param              Action's parameter.
+ * @param delay              Action's delay.
+ * @param timesToFire        Action's times to fire, -1 for infinite times.
+ * @return                   True if the action has been added, false otherwise.
+ * @error                    Invalid entity index.
+ */
+native bool EntityIO_AddEntityOutputAction(int entity, const char[] output, const char[] target, const char[] input, const char[] param, float delay, int timesToFire);
+
+/**
+ * Retrieves an input's name from an entity.
+ *
+ * @param address        Input's address.
+ * @param input          Buffer to store the input's name.
+ * @param maxLen         Maximum length of string buffer.
+ * @error                Invalid address.
+ * @return               Number of cells written.
+ */
+native int EntityIO_GetEntityInputName(Address address, char[] input, int maxLen);
+
+/**
+ * Retrieves an output's name from an entity.
+ *
+ * @param address        Output's address.
+ * @param output         Buffer to store the output's name.
+ * @param maxLen         Maximum length of string buffer.
+ * @error                Invalid address.
+ * @return               Number of cells written.
+ */
+native int EntityIO_GetEntityOutputName(Address address, char[] output, int maxLen);
+
+/**
+ * Retrieves an output's offset from an entity.
+ *
+ * @param address        Output's address.
+ * @error                Invalid address.
+ * @return               Output's offset.
+ */
+native int EntityIO_GetEntityOutputOffset(Address address);
+
+/**
  * Retrieves an action's target from an entity's output.
  *
  * @param address        Action's address.
@@ -91,25 +229,6 @@ native int EntityIO_GetEntityOutputActionID(Address address);
  */
 native float EntityIO_GetEntityOutputActionDelay(Address address);
 
-/**
- * Retrieves the first action's address from an entity's output.
- *
- * @param entity        Entity's index.
- * @param output        Output's name from the entity's datamap.
- * @error               Invalid entity index.
- * @return              The action's address.
- */
-native Address EntityIO_FindEntityFirstOutputAction(int entity, const char[] output);
-
-/**
- * Retrieves the next action's address from an entity's output.
- *
- * @param address        The address after which to begin searching from.
- * @error                Invalid address.
- * @return               The next action's address.
- */
-native Address EntityIO_FindEntityNextOutputAction(Address address);
-
 /* DO NOT EDIT BELOW THIS LINE */
 
 public SharedPlugin __pl_entityIO = 
@@ -126,15 +245,27 @@ public SharedPlugin __pl_entityIO =
 #if !defined REQUIRE_PLUGIN
 public void __pl_entityIO_SetNTVOptional()
 {
-	MarkNativeAsOptional("EntityIO_HookEntityInputs");
-	MarkNativeAsOptional("EntityIO_UnhookEntityInputs");
+	MarkNativeAsOptional("EntityIO_FindEntityFirstInput");
+	MarkNativeAsOptional("EntityIO_FindEntityNextInput");
+	MarkNativeAsOptional("EntityIO_FindEntityFirstOutput");
+	MarkNativeAsOptional("EntityIO_FindEntityNextOutput");
+	MarkNativeAsOptional("EntityIO_FindEntityOutputOffset");
+	MarkNativeAsOptional("EntityIO_FindEntityFirstOutputAction");
+	MarkNativeAsOptional("EntityIO_FindEntityNextOutputAction");
+	
+	MarkNativeAsOptional("EntityIO_HasEntityInput");
+	MarkNativeAsOptional("EntityIO_HasEntityOutput");
+	
+	MarkNativeAsOptional("EntityIO_AddEntityOutputAction");
+	
+	MarkNativeAsOptional("EntityIO_GetEntityInputName");
+	MarkNativeAsOptional("EntityIO_GetEntityOutputName");
+	MarkNativeAsOptional("EntityIO_GetEntityOutputOffset");
 	MarkNativeAsOptional("EntityIO_GetEntityOutputActionTarget");
 	MarkNativeAsOptional("EntityIO_GetEntityOutputActionInput");
 	MarkNativeAsOptional("EntityIO_GetEntityOutputActionParams");
 	MarkNativeAsOptional("EntityIO_GetEntityOutputActionDelay");
 	MarkNativeAsOptional("EntityIO_GetEntityOutputActionTimesToFire");
 	MarkNativeAsOptional("EntityIO_GetEntityOutputActionID");
-	MarkNativeAsOptional("EntityIO_FindEntityFirstOutputAction");
-	MarkNativeAsOptional("EntityIO_FindEntityNextOutputAction");
 }
 #endif
