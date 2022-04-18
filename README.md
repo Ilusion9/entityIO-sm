@@ -1,5 +1,5 @@
 # Descriptions
-Hook or get informations about entity inputs and outputs. Only tested in CS:GO.
+Hook or get informations about entity inputs and outputs. Only tested in CSGO and CSS. Might work in TF2, L4D2, DOD.
 
 # Dependencies
 dhooks - https://forums.alliedmods.net/showpost.php?p=2588686&postcount=589
