@@ -232,6 +232,12 @@ public void OnPluginStart()
 	{
 		SetFailState("Failed to set up \"GetDataDescMap\" call.");
 	}
+	
+	int entity = -1;
+	while ((entity = FindEntityByClassname(entity, "*")) != -1)
+	{
+		DHookEntity(g_DHook_AcceptInput, false, entity);
+	}
 }
 
 public void OnEntityCreated(int entity, const char[] classname)
