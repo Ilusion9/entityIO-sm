@@ -153,8 +153,8 @@
 			"sizeof::typedescription_t"
 			{
 				"windows"		"60"
-				"linux"			"60"
-				"mac"			"60"
+				"linux"			"64"
+				"mac"			"64"
 			}
 		}
 	}
