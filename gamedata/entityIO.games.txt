@@ -11,6 +11,20 @@
 				"mac"			"37"
 			}
 			
+			"variant_t::fieldType"
+			{
+				"windows"		"16"
+				"linux"			"16"
+				"mac"			"16"
+			}
+			
+			"sizeof::variant_t"
+			{
+				"windows"		"20"
+				"linux"			"20"
+				"mac"			"20"
+			}
+			
 			"CBaseEntityOutput::m_ActionList"
 			{
 				"windows"		"20"
