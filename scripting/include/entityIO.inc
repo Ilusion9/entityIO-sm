@@ -42,7 +42,7 @@ enum struct EntityIO_VariantInfo
 forward Action EntityIO_OnEntityInput(int entity, char input[256], int& activator, int& caller, EntityIO_VariantInfo variantInfo, int outputId);
 
 /**
- * Called after an entity has received an input.
+ * Called after an entity receives an input.
  *
  * @param entity           Entity's index.
  * @param input            Input's name.
