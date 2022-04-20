@@ -1,44 +1,56 @@
 # Descriptions
-Forwards and Natives for entity inputs and outputs. Only tested in CSGO (windows and linux) and CSS (windows). Might work in TF2, L4D2, DOD.
+Forwards and Natives for entity inputs and outputs. Only tested in CSGO (windows and linux) and CSS (windows). Might work in TF2, L4D2, DOD. To use return Plugin_Changed in EntityIO_OnEntityInput you must have SM 1.11 build 6871 or higher.
 
 # Dependencies
 dhooks - https://forums.alliedmods.net/showpost.php?p=2588686&postcount=589
 
 # Game Bugs
-If you change map entities with Stripper (or other plugins based on OnLevelInit), then the paramType in EntityIO_OnEntityInput can be EntityIO_FieldType_String.
+If you change map entities with Stripper (or other plugins based on OnLevelInit), then the paramType in EntityIO_OnEntityInput or EntityIO_OnEntityInput_Post can be EntityIO_VariantType_String.
 
 # Enums
 ```sourcepawn
-enum EntityIO_FieldType
+enum EntityIO_VariantType
 {
-	EntityIO_FieldType_None,
-	EntityIO_FieldType_Float,
-	EntityIO_FieldType_String,
-	EntityIO_FieldType_Vector,
-	EntityIO_FieldType_Integer,
-	EntityIO_FieldType_Boolean,
-	EntityIO_FieldType_Character,
-	EntityIO_FieldType_Color,
-	EntityIO_FieldType_Entity
+	EntityIO_VariantType_None,
+	EntityIO_VariantType_Float,
+	EntityIO_VariantType_String,
+	EntityIO_VariantType_Vector,
+	EntityIO_VariantType_Integer,
+	EntityIO_VariantType_Boolean,
+	EntityIO_VariantType_Character,
+	EntityIO_VariantType_Color,
+	EntityIO_VariantType_Entity,
+	EntityIO_VariantType_PosVector
 }
 ```
 
 # Forwards
+## Inputs
 ```sourcepawn
 /**
  * Called when an entity receives an input.
  *
  * @param entity             Entity's index.
  * @param input              Input's name.
- * @param caller             Caller's index.
  * @param activator          Activator's index.
- * @param paramType          Parameter's type.
- * @param paramValue         Parameter's value.
- * @param paramArray         Parameter's value as an array.
- * @param paramString        Parameter's value as a string.
- * @param outputID           Output's ID.
+ * @param caller             Caller's index.
+ * @param variantInfo        Parameter's type and value.
+ * @param outputId           Output's ID.
+ * @return                   Plugin_Handled or Plugin_Stop to block the input from being processed, Plugin_Continue otherwise.
  */
-void EntityIO_OnEntityInput(int entity, const char[] input, int caller, int activator, EntityIO_FieldType paramType, any paramValue, const any[] paramArray, const char[] paramString, int outputId);
+forward Action EntityIO_OnEntityInput(int entity, char input[256], int& activator, int& caller, EntityIO_VariantInfo variantInfo, int outputId);
+
+/**
+ * Called after an entity receives an input.
+ *
+ * @param entity           Entity's index.
+ * @param input            Input's name.
+ * @param activator        Activator's index.
+ * @param caller           Caller's index.
+ * @param param            Parameter's type and value.
+ * @param outputId         Output's ID.
+ */
+forward void EntityIO_OnEntityInput_Post(int entity, const char[] input, int activator, int caller, EntityIO_VariantInfo variantInfo, int outputId);
 ```
 
 # Natives
@@ -53,7 +65,7 @@ void EntityIO_OnEntityInput(int entity, const char[] input, int caller, int acti
  * @error                Invalid entity index.
  * @return               True if an input was found, false otherwise.
  */
-bool EntityIO_FindEntityFirstInput(int entity, Address& dataMap, Address& address);
+native bool EntityIO_FindEntityFirstInput(int entity, Address& dataMap, Address& address);
 
 /**
  * Retrieves the next input's address from an entity.
@@ -63,7 +75,7 @@ bool EntityIO_FindEntityFirstInput(int entity, Address& dataMap, Address& addres
  * @error                Invalid datamap address, invalid address.
  * @return               True if an input was found, false otherwise.
  */
-bool EntityIO_FindEntityNextInput(Address& dataMap, Address& address);
+native bool EntityIO_FindEntityNextInput(Address& dataMap, Address& address);
 
 /**
  * Returns whether or not an input can be accepted by an entity.
@@ -73,7 +85,7 @@ bool EntityIO_FindEntityNextInput(Address& dataMap, Address& address);
  * @error               Invalid entity index.
  * @return              True if the input can be accepted, false otherwise.
  */
-bool EntityIO_HasEntityInput(int entity, const char[] input);
+native bool EntityIO_HasEntityInput(int entity, const char[] input);
 
 /**
  * Retrieves an input's name from an entity.
@@ -84,7 +96,7 @@ bool EntityIO_HasEntityInput(int entity, const char[] input);
  * @error                Invalid address.
  * @return               Number of cells written.
  */
-int EntityIO_GetEntityInputName(Address address, char[] input, int maxLen);
+native int EntityIO_GetEntityInputName(Address address, char[] input, int maxLen);
 ```
 
 ## Outputs
@@ -98,7 +110,7 @@ int EntityIO_GetEntityInputName(Address address, char[] input, int maxLen);
  * @error                Invalid entity index.
  * @return               True if an output was found, false otherwise.
  */
-bool EntityIO_FindEntityFirstOutput(int entity, Address& dataMap, Address& address);
+native bool EntityIO_FindEntityFirstOutput(int entity, Address& dataMap, Address& address);
 
 /**
  * Retrieves the next output's address from an entity.
@@ -108,7 +120,7 @@ bool EntityIO_FindEntityFirstOutput(int entity, Address& dataMap, Address& addre
  * @error                Invalid datamap address, invalid address.
  * @return               True if an output was found, false otherwise.
  */
-bool EntityIO_FindEntityNextOutput(Address& dataMap, Address& address);
+native bool EntityIO_FindEntityNextOutput(Address& dataMap, Address& address);
 
 /**
  * Retrieves an output's offset.
@@ -118,7 +130,7 @@ bool EntityIO_FindEntityNextOutput(Address& dataMap, Address& address);
  * @error               Invalid entity index.
  * @return              Output's offset, -1 on failure.
  */
-int EntityIO_FindEntityOutputOffset(int entity, const char[] output);
+native int EntityIO_FindEntityOutputOffset(int entity, const char[] output);
 
 /**
  * Returns whether or not an output can be fired by an entity.
@@ -128,7 +140,7 @@ int EntityIO_FindEntityOutputOffset(int entity, const char[] output);
  * @error               Invalid entity index.
  * @return              True if the output can be fired, false otherwise.
  */
-bool EntityIO_HasEntityOutput(int entity, const char[] output);
+native bool EntityIO_HasEntityOutput(int entity, const char[] output);
 
 /**
  * Retrieves an output's name from an entity.
@@ -139,7 +151,7 @@ bool EntityIO_HasEntityOutput(int entity, const char[] output);
  * @error                Invalid address.
  * @return               Number of cells written.
  */
-int EntityIO_GetEntityOutputName(Address address, char[] output, int maxLen);
+native int EntityIO_GetEntityOutputName(Address address, char[] output, int maxLen);
 
 /**
  * Retrieves an output's offset from an entity.
@@ -148,7 +160,7 @@ int EntityIO_GetEntityOutputName(Address address, char[] output, int maxLen);
  * @error                Invalid address.
  * @return               Output's offset.
  */
-int EntityIO_GetEntityOutputOffset(Address address);
+native int EntityIO_GetEntityOutputOffset(Address address);
 ```
 
 ## Output Actions
@@ -162,7 +174,7 @@ int EntityIO_GetEntityOutputOffset(Address address);
  * @error                Invalid entity index, invalid output offset.
  * @return               True if an action was found, false otherwise.
  */
-bool EntityIO_FindEntityFirstOutputAction(int entity, int offset, Address& address);
+native bool EntityIO_FindEntityFirstOutputAction(int entity, int offset, Address& address);
 
 /**
  * Retrieves the next action's address from an entity's output.
@@ -171,7 +183,7 @@ bool EntityIO_FindEntityFirstOutputAction(int entity, int offset, Address& addre
  * @error                Invalid address.
  * @return               True if an action was found, false otherwise.
  */
-bool EntityIO_FindEntityNextOutputAction(Address& address);
+native bool EntityIO_FindEntityNextOutputAction(Address& address);
 
 /**
  * Adds an action to an entity's output.
@@ -186,7 +198,7 @@ bool EntityIO_FindEntityNextOutputAction(Address& address);
  * @return                   True if the action has been added, false otherwise.
  * @error                    Invalid entity index.
  */
-bool EntityIO_AddEntityOutputAction(int entity, const char[] output, const char[] target, const char[] input, const char[] param, float delay, int timesToFire);
+native bool EntityIO_AddEntityOutputAction(int entity, const char[] output, const char[] target, const char[] input, const char[] param, float delay, int timesToFire);
 
 /**
  * Retrieves an action's target from an entity's output.
@@ -197,7 +209,7 @@ bool EntityIO_AddEntityOutputAction(int entity, const char[] output, const char[
  * @error                Invalid address.
  * @return               Number of cells written.
  */
-int EntityIO_GetEntityOutputActionTarget(Address address, char[] target, int maxLen);
+native int EntityIO_GetEntityOutputActionTarget(Address address, char[] target, int maxLen);
 
 /**
  * Retrieves an action's input from an entity's output.
@@ -208,7 +220,7 @@ int EntityIO_GetEntityOutputActionTarget(Address address, char[] target, int max
  * @error                Invalid address.
  * @return               Number of cells written.
  */
-int EntityIO_GetEntityOutputActionInput(Address address, char[] input, int maxLen);
+native int EntityIO_GetEntityOutputActionInput(Address address, char[] input, int maxLen);
 
 /**
  * Retrieves an action's parameter from an entity's output.
@@ -219,7 +231,7 @@ int EntityIO_GetEntityOutputActionInput(Address address, char[] input, int maxLe
  * @error                Invalid address.
  * @return               Number of cells written.
  */
-int EntityIO_GetEntityOutputActionParam(Address address, char[] param, int maxLen);
+native int EntityIO_GetEntityOutputActionParam(Address address, char[] param, int maxLen);
 
 /**
  * Retrieves an action's remaining times to fire from an entity's output.
@@ -228,7 +240,7 @@ int EntityIO_GetEntityOutputActionParam(Address address, char[] param, int maxLe
  * @error                Invalid address.
  * @return               Action's remaining times to fire.
  */
-int EntityIO_GetEntityOutputActionTimesToFire(Address address);
+native int EntityIO_GetEntityOutputActionTimesToFire(Address address);
 
 /**
  * Retrieves an action's ID from an entity's output.
@@ -237,7 +249,7 @@ int EntityIO_GetEntityOutputActionTimesToFire(Address address);
  * @error                Invalid address.
  * @return               Action's ID.
  */
-int EntityIO_GetEntityOutputActionID(Address address);
+native int EntityIO_GetEntityOutputActionID(Address address);
 
 /**
  * Retrieves an action's delay from an entity's output.
@@ -246,7 +258,7 @@ int EntityIO_GetEntityOutputActionID(Address address);
  * @error                Invalid address.
  * @return               Action's delay.
  */
-float EntityIO_GetEntityOutputActionDelay(Address address);
+native float EntityIO_GetEntityOutputActionDelay(Address address);
 ```
 
 # Examples
