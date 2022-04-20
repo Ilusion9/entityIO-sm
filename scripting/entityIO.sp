@@ -15,6 +15,7 @@ public Plugin myinfo =
 	url = "https://github.com/Ilusion9/"
 };
 
+#define FIELDTYPE_VOID                   0
 #define FIELDTYPE_FLOAT                  1
 #define FIELDTYPE_STRING                 2
 #define FIELDTYPE_VECTOR                 3
@@ -30,20 +31,21 @@ public Plugin myinfo =
 #define FIELDTYPE_DESC_INPUT         8
 #define FIELDTYPE_DESC_OUTPUT        16
 
-enum FieldType
+enum EntityIO_VariantType
 {
-	FieldType_None,
-	FieldType_Float,
-	FieldType_String,
-	FieldType_Vector,
-	FieldType_Integer,
-	FieldType_Boolean,
-	FieldType_Character,
-	FieldType_Color,
-	FieldType_Entity
+	EntityIO_VariantType_None,
+	EntityIO_VariantType_Float,
+	EntityIO_VariantType_String,
+	EntityIO_VariantType_Vector,
+	EntityIO_VariantType_Integer,
+	EntityIO_VariantType_Boolean,
+	EntityIO_VariantType_Character,
+	EntityIO_VariantType_Color,
+	EntityIO_VariantType_Entity,
+	EntityIO_VariantType_PosVector
 }
 
-enum struct ParamInfo
+enum struct EntityIO_VariantInfo
 {
 	bool bValue;
 	int iValue;
@@ -51,9 +53,11 @@ enum struct ParamInfo
 	char sValue[256];
 	int clrValue[4];
 	float vecValue[3];
-	FieldType fieldType;
+	EntityIO_VariantType variantType;
 }
 
+int g_Offset_InputVariantType;
+int g_Offset_InputVariantSize;
 int g_Offset_ActionList;
 int g_Offset_ActionTarget;
 int g_Offset_ActionInput;
@@ -71,6 +75,8 @@ int g_Offset_DataFieldName;
 int g_Offset_DataFieldSize;
 
 GlobalForward g_Forward_OnEntityInput;
+GlobalForward g_Forward_OnEntityInput_Post;
+
 Handle g_DHook_AcceptInput;
 Handle g_SDKCall_GetDataDescMap;
 
@@ -114,6 +120,18 @@ public void OnPluginStart()
 	if (acceptInputOffset == -1)
 	{
 		SetFailState("Failed to load \"CBaseEntity::AcceptInput\" offset.");
+	}
+	
+	g_Offset_InputVariantType = GameConfGetOffset(configFile, "variant_t::fieldType");
+	if (g_Offset_InputVariantType == -1)
+	{
+		SetFailState("Failed to load \"variant_t::fieldType\" offset.");
+	}
+	
+	g_Offset_InputVariantSize = GameConfGetOffset(configFile, "sizeof::variant_t");
+	if (g_Offset_InputVariantSize == -1)
+	{
+		SetFailState("Failed to load \"sizeof::variant_t\" offset.");
 	}
 	
 	g_Offset_ActionList = GameConfGetOffset(configFile, "CBaseEntityOutput::m_ActionList");
@@ -214,13 +232,11 @@ public void OnPluginStart()
 	
 	delete configFile;
 	
-	g_Forward_OnEntityInput = new GlobalForward("EntityIO_OnEntityInput", ET_Ignore, Param_Cell, Param_String, Param_Cell, Param_Cell, Param_Cell, Param_Any, Param_Array, Param_String, Param_Cell);
-	
-	g_DHook_AcceptInput = DHookCreate(acceptInputOffset, HookType_Entity, ReturnType_Bool, ThisPointer_CBaseEntity, DHook_AcceptInput);
+	g_DHook_AcceptInput = DHookCreate(acceptInputOffset, HookType_Entity, ReturnType_Bool, ThisPointer_CBaseEntity);
 	DHookAddParam(g_DHook_AcceptInput, HookParamType_CharPtr);
 	DHookAddParam(g_DHook_AcceptInput, HookParamType_CBaseEntity);
 	DHookAddParam(g_DHook_AcceptInput, HookParamType_CBaseEntity);
-	DHookAddParam(g_DHook_AcceptInput, HookParamType_Object, 20, DHookPass_ByVal | DHookPass_ODTOR | DHookPass_OCTOR | DHookPass_OASSIGNOP);
+	DHookAddParam(g_DHook_AcceptInput, HookParamType_Object, g_Offset_InputVariantSize, DHookPass_ByVal | DHookPass_ODTOR | DHookPass_OCTOR | DHookPass_OASSIGNOP);
 	DHookAddParam(g_DHook_AcceptInput, HookParamType_Int);
 	
 	StartPrepSDKCall(SDKCall_Entity);
@@ -233,16 +249,21 @@ public void OnPluginStart()
 		SetFailState("Failed to set up \"GetDataDescMap\" call.");
 	}
 	
+	g_Forward_OnEntityInput = new GlobalForward("EntityIO_OnEntityInput", ET_Hook, Param_Cell, Param_String, Param_CellByRef, Param_CellByRef, Param_Array, Param_Cell);
+	g_Forward_OnEntityInput_Post = new GlobalForward("EntityIO_OnEntityInput_Post", ET_Ignore, Param_Cell, Param_String, Param_Cell, Param_Cell, Param_Array, Param_Cell);
+	
 	int entity = -1;
 	while ((entity = FindEntityByClassname(entity, "*")) != -1)
 	{
-		DHookEntity(g_DHook_AcceptInput, false, entity);
+		DHookEntity(g_DHook_AcceptInput, false, entity, INVALID_FUNCTION, DHook_AcceptInput);
+		DHookEntity(g_DHook_AcceptInput, true, entity, INVALID_FUNCTION, DHook_AcceptInput_Post);
 	}
 }
 
 public void OnEntityCreated(int entity, const char[] classname)
 {
-	DHookEntity(g_DHook_AcceptInput, false, entity);
+	DHookEntity(g_DHook_AcceptInput, false, entity, INVALID_FUNCTION, DHook_AcceptInput);
+	DHookEntity(g_DHook_AcceptInput, true, entity, INVALID_FUNCTION, DHook_AcceptInput_Post);
 }
 
 public MRESReturn DHook_AcceptInput(int pThis, Handle hReturn, Handle hParams)
@@ -262,123 +283,289 @@ public MRESReturn DHook_AcceptInput(int pThis, Handle hReturn, Handle hParams)
 		caller = DHookGetParam(hParams, 3);
 	}
 	
-	ParamInfo paramInfo;
-	int fieldType = DHookGetParamObjectPtrVar(hParams, 4, 16, ObjectValueType_Int);
+	EntityIO_VariantInfo variantInfo;
+	int variantType = DHookGetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int);
 	
-	switch (fieldType)
+	switch (variantType)
 	{
 		case FIELDTYPE_FLOAT:
 		{
-			paramInfo.flValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Float);
-			paramInfo.fieldType = FieldType_Float;
+			variantInfo.flValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Float);
+			variantInfo.variantType = EntityIO_VariantType_Float;
 		}
 		
 		case FIELDTYPE_STRING:
 		{
-			DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, paramInfo.sValue, sizeof(ParamInfo::sValue));
-			paramInfo.fieldType = FieldType_String;
+			DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, variantInfo.sValue, sizeof(EntityIO_VariantInfo::sValue));
+			variantInfo.variantType = EntityIO_VariantType_String;
 		}
 		
-		case FIELDTYPE_VECTOR, FIELDTYPE_POSITION_VECTOR:
+		case FIELDTYPE_VECTOR:
 		{
-			DHookGetParamObjectPtrVarVector(hParams, 4, 0, ObjectValueType_Vector, paramInfo.vecValue);
-			paramInfo.fieldType = FieldType_Vector;
+			DHookGetParamObjectPtrVarVector(hParams, 4, 0, ObjectValueType_Vector, variantInfo.vecValue);
+			variantInfo.variantType = EntityIO_VariantType_Vector;
 		}
 		
 		case FIELDTYPE_INTEGER, FIELDTYPE_SHORT:
 		{
-			paramInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int);
-			paramInfo.fieldType = FieldType_Integer;
+			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int);
+			variantInfo.variantType = EntityIO_VariantType_Integer;
 		}
 		
 		case FIELDTYPE_BOOLEAN:
 		{
-			paramInfo.bValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Bool);
-			paramInfo.fieldType = FieldType_Boolean;
+			variantInfo.bValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Bool);
+			variantInfo.variantType = EntityIO_VariantType_Boolean;
 		}
 		
 		case FIELDTYPE_CHARACTER:
 		{
-			paramInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int);
-			paramInfo.fieldType = FieldType_Character;
+			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int);
+			variantInfo.variantType = EntityIO_VariantType_Character;
 		}
 		
 		case FIELDTYPE_COLOR32:
 		{
 			int color = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int);
-			paramInfo.clrValue[0] = color & 0xFF;
-			paramInfo.clrValue[1] = (color >> 8) & 0xFF;
-			paramInfo.clrValue[2] = (color >> 16) & 0xFF;
-			paramInfo.clrValue[3] = (color >> 24) & 0xFF;
-			paramInfo.fieldType = FieldType_Color;
+			variantInfo.clrValue[0] = color & 0xFF;
+			variantInfo.clrValue[1] = (color >> 8) & 0xFF;
+			variantInfo.clrValue[2] = (color >> 16) & 0xFF;
+			variantInfo.clrValue[3] = (color >> 24) & 0xFF;
+			variantInfo.variantType = EntityIO_VariantType_Color;
 		}
 		
-		case FIELDTYPE_CLASSPTR, FIELDTYPE_EHANDLE:
+		case FIELDTYPE_CLASSPTR:
 		{
-			paramInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Ehandle);
-			paramInfo.fieldType = FieldType_Entity;
+			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_CBaseEntityPtr);
+			variantInfo.variantType = EntityIO_VariantType_Entity;
+		}
+		
+		case FIELDTYPE_EHANDLE:
+		{
+			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Ehandle);
+			variantInfo.variantType = EntityIO_VariantType_Entity;
+		}
+		
+		case FIELDTYPE_POSITION_VECTOR:
+		{
+			DHookGetParamObjectPtrVarVector(hParams, 4, 0, ObjectValueType_Vector, variantInfo.vecValue);
+			variantInfo.variantType = EntityIO_VariantType_PosVector;
 		}
 		
 		default:
 		{
-			paramInfo.fieldType = FieldType_None;
+			variantInfo.variantType = EntityIO_VariantType_None;
 		}
 	}
 	
 	int outputId = DHookGetParam(hParams, 5);	
 	
+	Action result = Plugin_Continue;
 	Call_StartForward(g_Forward_OnEntityInput);
 	Call_PushCell(pThis);
+	Call_PushStringEx(input, sizeof(input), SM_PARAM_STRING_UTF8 | SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
+	Call_PushCellRef(activator);
+	Call_PushCellRef(caller);
+	Call_PushArrayEx(variantInfo, sizeof(EntityIO_VariantInfo), SM_PARAM_COPYBACK);
+	Call_PushCell(outputId);
+	Call_Finish(result);
+	
+	if (result == Plugin_Handled || result == Plugin_Stop)
+	{
+		DHookSetReturn(hReturn, false);
+		return MRES_Supercede;
+	}
+	
+	if (result == Plugin_Changed)
+	{
+		DHookSetParamString(hParams, 1, input);
+		
+		if (activator == -1 || IsValidEntity(activator))
+		{
+			DHookSetParam(hParams, 2, activator);
+		}
+		
+		if (caller == -1 || IsValidEntity(caller))
+		{
+			DHookSetParam(hParams, 3, caller);
+		}
+		
+		switch (variantInfo.variantType)
+		{
+			case EntityIO_VariantType_None:
+			{
+				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_VOID);
+			}
+			
+			case EntityIO_VariantType_Float: 
+			{
+				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_FLOAT);
+				DHookSetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Float, variantInfo.flValue);
+			}
+			
+			case EntityIO_VariantType_String:
+			{
+				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_STRING);
+				DHookSetParamString(hParams, 4, variantInfo.sValue);
+			}
+			
+			case EntityIO_VariantType_Vector:
+			{
+				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_VECTOR);
+				DHookSetParamObjectPtrVarVector(hParams, 4, 0, ObjectValueType_Vector, variantInfo.vecValue);
+			}
+			
+			case EntityIO_VariantType_Integer: 
+			{
+				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_INTEGER);
+				DHookSetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int, variantInfo.iValue);
+			}
+			
+			case EntityIO_VariantType_Boolean: 
+			{
+				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_BOOLEAN);
+				DHookSetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Bool, variantInfo.bValue);
+			}
+			
+			case EntityIO_VariantType_Character: 
+			{
+				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_CHARACTER);
+				DHookSetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int, variantInfo.iValue);
+			}
+			
+			case EntityIO_VariantType_Color:
+			{
+				int color = ((variantInfo.clrValue[0] & 0xFF) << 16) | ((variantInfo.clrValue[1] & 0xFF) << 8) | (variantInfo.clrValue[2] & 0xFF);
+				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_COLOR32);
+				DHookSetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int, color);
+			}
+			
+			case EntityIO_VariantType_Entity: 
+			{
+				if (variantInfo.iValue != -1 && IsValidEntity(variantInfo.iValue))
+				{
+					DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_CLASSPTR);
+					DHookSetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_CBaseEntityPtr, variantInfo.iValue);
+				}
+				else
+				{
+					DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_VOID);
+				}
+			}
+			
+			case EntityIO_VariantType_PosVector:
+			{
+				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_POSITION_VECTOR);
+				DHookSetParamObjectPtrVarVector(hParams, 4, 0, ObjectValueType_Vector, variantInfo.vecValue);
+			}
+		}
+		
+		return MRES_ChangedHandled;
+	}
+	
+	return MRES_Ignored;
+}
+
+public MRESReturn DHook_AcceptInput_Post(int pThis, Handle hReturn, Handle hParams)
+{
+	char input[256];
+	DHookGetParamString(hParams, 1, input, sizeof(input));
+	
+	int activator = -1;
+	if (!DHookIsNullParam(hParams, 2))
+	{
+		activator = DHookGetParam(hParams, 2);
+	}
+	
+	int caller = -1;
+	if (!DHookIsNullParam(hParams, 3))
+	{
+		caller = DHookGetParam(hParams, 3);
+	}
+	
+	EntityIO_VariantInfo variantInfo;
+	int fieldType = DHookGetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int);
+	
+	switch (fieldType)
+	{
+		case FIELDTYPE_FLOAT:
+		{
+			variantInfo.flValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Float);
+			variantInfo.variantType = EntityIO_VariantType_Float;
+		}
+		
+		case FIELDTYPE_STRING:
+		{
+			DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, variantInfo.sValue, sizeof(EntityIO_VariantInfo::sValue));
+			variantInfo.variantType = EntityIO_VariantType_String;
+		}
+		
+		case FIELDTYPE_VECTOR:
+		{
+			DHookGetParamObjectPtrVarVector(hParams, 4, 0, ObjectValueType_Vector, variantInfo.vecValue);
+			variantInfo.variantType = EntityIO_VariantType_Vector;
+		}
+		
+		case FIELDTYPE_INTEGER, FIELDTYPE_SHORT:
+		{
+			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int);
+			variantInfo.variantType = EntityIO_VariantType_Integer;
+		}
+		
+		case FIELDTYPE_BOOLEAN:
+		{
+			variantInfo.bValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Bool);
+			variantInfo.variantType = EntityIO_VariantType_Boolean;
+		}
+		
+		case FIELDTYPE_CHARACTER:
+		{
+			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int);
+			variantInfo.variantType = EntityIO_VariantType_Character;
+		}
+		
+		case FIELDTYPE_COLOR32:
+		{
+			int color = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int);
+			variantInfo.clrValue[0] = color & 0xFF;
+			variantInfo.clrValue[1] = (color >> 8) & 0xFF;
+			variantInfo.clrValue[2] = (color >> 16) & 0xFF;
+			variantInfo.clrValue[3] = (color >> 24) & 0xFF;
+			variantInfo.variantType = EntityIO_VariantType_Color;
+		}
+		
+		case FIELDTYPE_CLASSPTR:
+		{
+			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_CBaseEntityPtr);
+			variantInfo.variantType = EntityIO_VariantType_Entity;
+		}
+		
+		case FIELDTYPE_EHANDLE:
+		{
+			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Ehandle);
+			variantInfo.variantType = EntityIO_VariantType_Entity;
+		}
+		
+		case FIELDTYPE_POSITION_VECTOR:
+		{
+			DHookGetParamObjectPtrVarVector(hParams, 4, 0, ObjectValueType_Vector, variantInfo.vecValue);
+			variantInfo.variantType = EntityIO_VariantType_PosVector;
+		}
+		
+		default:
+		{
+			variantInfo.variantType = EntityIO_VariantType_None;
+		}
+	}
+	
+	int outputId = DHookGetParam(hParams, 5);	
+	
+	Call_StartForward(g_Forward_OnEntityInput_Post);
+	Call_PushCell(pThis);
 	Call_PushString(input);
-	Call_PushCell(caller);
 	Call_PushCell(activator);
-	Call_PushCell(paramInfo.fieldType);
-	
-	if (paramInfo.fieldType == FieldType_Boolean)
-	{
-		Call_PushCell(paramInfo.bValue);
-		Call_PushNullVector();
-		Call_PushNullString();
-	}
-	else if (paramInfo.fieldType == FieldType_Integer 
-		|| paramInfo.fieldType == FieldType_Character 
-		|| paramInfo.fieldType == FieldType_Entity)
-	{
-		Call_PushCell(paramInfo.iValue);
-		Call_PushNullVector();
-		Call_PushNullString();
-	}
-	else if (paramInfo.fieldType == FieldType_Float)
-	{
-		Call_PushFloat(paramInfo.flValue);
-		Call_PushNullVector();
-		Call_PushNullString();
-	}
-	else if (paramInfo.fieldType == FieldType_String)
-	{
-		Call_PushCell(0);
-		Call_PushNullVector();
-		Call_PushString(paramInfo.sValue);
-	}
-	else if (paramInfo.fieldType == FieldType_Color)
-	{
-		Call_PushCell(0);
-		Call_PushArray(paramInfo.clrValue, sizeof(ParamInfo::clrValue));
-		Call_PushNullString();
-	}
-	else if (paramInfo.fieldType == FieldType_Vector)
-	{
-		Call_PushCell(0);
-		Call_PushArray(paramInfo.vecValue, sizeof(ParamInfo::vecValue));
-		Call_PushNullString();
-	}
-	else
-	{
-		Call_PushCell(0);
-		Call_PushNullVector();
-		Call_PushNullString();
-	}
-	
+	Call_PushCell(caller);
+	Call_PushArray(variantInfo, sizeof(EntityIO_VariantInfo));
 	Call_PushCell(outputId);
 	Call_Finish();
 	

@@ -17,43 +17,134 @@ public void Output_OnEntityOutput(const char[] output, int caller, int activator
 		return;
 	}
 	
-	// has entity this output?
-	if (EntityIO_HasEntityInput(caller, "Use"))
-	{
-		PrintToServer("(func_button) Found \"OnPressed\" output for func_button.");
-	}
-	
 	DisplayEntityOutputActions(caller, output);
+	PrintToServer("\n");
+	
 	DisplayEntityInputs(caller);
+	PrintToServer("\n");
+	
 	DisplayEntityOutputs(caller);
+	PrintToServer("\n");
 }
 
-public void EntityIO_OnEntityInput(int entity, const char[] input, int caller, int activator, EntityIO_FieldType paramType, any paramValue, const any[] paramArray, const char[] paramString, int outputId)
+public Action EntityIO_OnEntityInput(int entity, char input[256], int& activator, int& caller, EntityIO_VariantInfo variantInfo, int outputId)
 {
-	char classname[256];
-	GetEntityClassname(entity, classname, sizeof(classname));
-	
-	if (!StrEqual(classname, "func_button", true))
+	switch (variantInfo.variantType)
 	{
-		return;
+		case EntityIO_VariantType_None:
+		{
+			PrintToServer("(EntityIO_OnEntityInput) %s : activator %d : caller %d : param void : %d", input, activator, caller, outputId);
+		}
+		
+		case EntityIO_VariantType_Float: 
+		{
+			PrintToServer("(EntityIO_OnEntityInput) %s : activator %d : caller %d : param float : %f : %d", input, activator, caller, variantInfo.flValue, outputId);
+		}
+		
+		case EntityIO_VariantType_String:
+		{
+			PrintToServer("(EntityIO_OnEntityInput) %s : activator %d : caller %d : param string : %s : %d", input, activator, caller, variantInfo.sValue, outputId);
+		}
+		
+		case EntityIO_VariantType_Vector:
+		{
+			PrintToServer("(EntityIO_OnEntityInput) %s : activator %d : caller %d : param vec : %f %f %f : %d", input, activator, caller, variantInfo.vecValue[0], variantInfo.vecValue[1], variantInfo.vecValue[2], outputId);
+		}
+		
+		case EntityIO_VariantType_Integer: 
+		{
+			PrintToServer("(EntityIO_OnEntityInput) %s : activator %d : caller %d : param int : %d : %d", input, activator, caller, variantInfo.iValue, outputId);
+		}
+		
+		case EntityIO_VariantType_Boolean: 
+		{
+			PrintToServer("(EntityIO_OnEntityInput) %s : activator %d : caller %d : param bool : %d : %d", input, activator, caller, variantInfo.bValue, outputId);
+		}
+		
+		case EntityIO_VariantType_Character: 
+		{
+			PrintToServer("(EntityIO_OnEntityInput) %s : activator %d : caller %d : param char : %c : %d", input, activator, caller, view_as<char>(variantInfo.iValue), outputId);
+		}
+		
+		case EntityIO_VariantType_Color:
+		{
+			PrintToServer("(EntityIO_OnEntityInput) %s : activator %d : caller %d : param color : %d %d %d %d : %d", input, activator, caller, variantInfo.clrValue[0], variantInfo.clrValue[1], variantInfo.clrValue[2], variantInfo.clrValue[3], outputId);
+		}
+		
+		case EntityIO_VariantType_Entity: 
+		{
+			PrintToServer("(EntityIO_OnEntityInput) %s : activator %d : caller %d : param entity : %d : %d", input, activator, caller, variantInfo.iValue, outputId);
+		}
+		
+		case EntityIO_VariantType_PosVector:
+		{
+			PrintToServer("(EntityIO_OnEntityInput) %s : activator %d : caller %d : param pos vec : %f %f %f : %d", input, activator, caller, variantInfo.vecValue[0], variantInfo.vecValue[1], variantInfo.vecValue[2], outputId);
+		}
 	}
 	
-	// search for Use inputs
-	if (!StrEqual(input, "Use", false))
+	return Plugin_Continue;
+}
+
+public void EntityIO_OnEntityInput_Post(int entity, const char[] input, int activator, int caller, EntityIO_VariantInfo variantInfo, int outputId)
+{	
+	switch (variantInfo.variantType)
 	{
-		return;
+		case EntityIO_VariantType_None:
+		{
+			PrintToServer("(EntityIO_OnEntityInput_Post) %s : activator %d : caller %d : param void : %d", input, activator, caller, outputId);
+		}
+		
+		case EntityIO_VariantType_Float: 
+		{
+			PrintToServer("(EntityIO_OnEntityInput_Post) %s : activator %d : caller %d : param float : %f : %d", input, activator, caller, variantInfo.flValue, outputId);
+		}
+		
+		case EntityIO_VariantType_String:
+		{
+			PrintToServer("(EntityIO_OnEntityInput_Post) %s : activator %d : caller %d : param string : %s : %d", input, activator, caller, variantInfo.sValue, outputId);
+		}
+		
+		case EntityIO_VariantType_Vector:
+		{
+			PrintToServer("(EntityIO_OnEntityInput_Post) %s : activator %d : caller %d : param vec : %f %f %f : %d", input, activator, caller, variantInfo.vecValue[0], variantInfo.vecValue[1], variantInfo.vecValue[2], outputId);
+		}
+		
+		case EntityIO_VariantType_Integer: 
+		{
+			PrintToServer("(EntityIO_OnEntityInput_Post) %s : activator %d : caller %d : param int : %d : %d", input, activator, caller, variantInfo.iValue, outputId);
+		}
+		
+		case EntityIO_VariantType_Boolean: 
+		{
+			PrintToServer("(EntityIO_OnEntityInput_Post) %s : activator %d : caller %d : param bool : %d : %d", input, activator, caller, variantInfo.bValue, outputId);
+		}
+		
+		case EntityIO_VariantType_Character: 
+		{
+			PrintToServer("(EntityIO_OnEntityInput_Post) %s : activator %d : caller %d : param char : %c : %d", input, activator, caller, view_as<char>(variantInfo.iValue), outputId);
+		}
+		
+		case EntityIO_VariantType_Color:
+		{
+			PrintToServer("(EntityIO_OnEntityInput_Post) %s : activator %d : caller %d : param color : %d %d %d %d : %d", input, activator, caller, variantInfo.clrValue[0], variantInfo.clrValue[1], variantInfo.clrValue[2], variantInfo.clrValue[3], outputId);
+		}
+		
+		case EntityIO_VariantType_Entity: 
+		{
+			PrintToServer("(EntityIO_OnEntityInput_Post) %s : activator %d : caller %d : param entity : %d : %d", input, activator, caller, variantInfo.iValue, outputId);
+		}
+		
+		case EntityIO_VariantType_PosVector:
+		{
+			PrintToServer("(EntityIO_OnEntityInput_Post) %s : activator %d : caller %d : param pos vec : %f %f %f : %d", input, activator, caller, variantInfo.vecValue[0], variantInfo.vecValue[1], variantInfo.vecValue[2], outputId);
+		}
 	}
 	
-	// has entity this input?
-	if (EntityIO_HasEntityInput(entity, "Use"))
-	{
-		PrintToServer("(func_button) Found \"Use\" input for func_button.");
-	}
+	PrintToServer("\n");
 }
 
 void DisplayEntityOutputActions(int entity, const char[] output)
 {
-	// find entity's output offset (OnPressed)
 	int offset = EntityIO_FindEntityOutputOffset(entity, output);
 	if (offset == -1)
 	{
@@ -61,9 +152,9 @@ void DisplayEntityOutputActions(int entity, const char[] output)
 	}
 	
 	PrintToServer("(func_button) Output offset for OnPressed: %d.", offset);
+	PrintToServer("\n");
 	
-	// get all actions of entity's OnPressed output
-	PrintToServer("(func_button) Get all actions of OnPressed.");
+	PrintToServer("(func_button) Get all actions of entity (OnPressed output).");
 	
 	Address address;
 	if (EntityIO_FindEntityFirstOutputAction(entity, offset, address))
@@ -85,14 +176,13 @@ void DisplayEntityOutputActions(int entity, const char[] output)
 	}
 	else
 	{
-		PrintToServer("(func_button) No actions of OnPressed found.");
+		PrintToServer("(func_button) No actions of entity found (OnPressed output).");
 	}
 }
 
 void DisplayEntityInputs(int entity)
 {
-	// iterate through entity's inputs
-	PrintToServer("(func_button) Get all inputs.");
+	PrintToServer("(func_button) Get all inputs of entity.");
 	
 	Address dataMap, address;
 	if (EntityIO_FindEntityFirstInput(entity, dataMap, address))
@@ -108,14 +198,13 @@ void DisplayEntityInputs(int entity)
 	}
 	else
 	{
-		PrintToServer("(func_button) No inputs.");
+		PrintToServer("(func_button) No inputs of entity found.");
 	}
 }
 
 void DisplayEntityOutputs(int entity)
 {
-	// iterate through entity's outputs
-	PrintToServer("(func_button) Get all outputs.");
+	PrintToServer("(func_button) Get all outputs of entity.");
 	
 	Address dataMap, address;
 	if (EntityIO_FindEntityFirstOutput(entity, dataMap, address))
@@ -131,6 +220,6 @@ void DisplayEntityOutputs(int entity)
 	}
 	else
 	{
-		PrintToServer("(func_button) No outputs.");
+		PrintToServer("(func_button) No outputs of entity found.");
 	}
 }
