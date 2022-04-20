@@ -3,17 +3,29 @@
 #endif
 #define _entityIO_included
 
-enum EntityIO_FieldType
+enum EntityIO_VariantType
 {
-	EntityIO_FieldType_None,
-	EntityIO_FieldType_Float,
-	EntityIO_FieldType_String,
-	EntityIO_FieldType_Vector,
-	EntityIO_FieldType_Integer,
-	EntityIO_FieldType_Boolean,
-	EntityIO_FieldType_Character,
-	EntityIO_FieldType_Color,
-	EntityIO_FieldType_Entity
+	EntityIO_VariantType_None,
+	EntityIO_VariantType_Float,
+	EntityIO_VariantType_String,
+	EntityIO_VariantType_Vector,
+	EntityIO_VariantType_Integer,
+	EntityIO_VariantType_Boolean,
+	EntityIO_VariantType_Character,
+	EntityIO_VariantType_Color,
+	EntityIO_VariantType_Entity,
+	EntityIO_VariantType_PosVector
+}
+
+enum struct EntityIO_VariantInfo
+{
+	bool bValue;
+	int iValue;
+	float flValue;
+	char sValue[256];
+	int clrValue[4];
+	float vecValue[3];
+	EntityIO_VariantType variantType;
 }
 
 /**
@@ -21,15 +33,25 @@ enum EntityIO_FieldType
  *
  * @param entity             Entity's index.
  * @param input              Input's name.
- * @param caller             Caller's index.
  * @param activator          Activator's index.
- * @param paramType          Parameter's type.
- * @param paramValue         Parameter's value.
- * @param paramArray         Parameter's value as an array.
- * @param paramString        Parameter's value as a string.
+ * @param caller             Caller's index.
+ * @param variantInfo        Parameter's type and value.
  * @param outputId           Output's ID.
+ * @return                   Plugin_Handled or Plugin_Stop to block the input from being processed, Plugin_Continue otherwise.
  */
-forward void EntityIO_OnEntityInput(int entity, const char[] input, int caller, int activator, EntityIO_FieldType paramType, any paramValue, const any[] paramArray, const char[] paramString, int outputId);
+forward Action EntityIO_OnEntityInput(int entity, char input[256], int& activator, int& caller, EntityIO_VariantInfo variantInfo, int outputId);
+
+/**
+ * Called after an entity has received an input.
+ *
+ * @param entity           Entity's index.
+ * @param input            Input's name.
+ * @param activator        Activator's index.
+ * @param caller           Caller's index.
+ * @param param            Parameter's type and value.
+ * @param outputId         Output's ID.
+ */
+forward void EntityIO_OnEntityInput_Post(int entity, const char[] input, int activator, int caller, EntityIO_VariantInfo variantInfo, int outputId);
 
 /**
  * Retrieves the first input's address from an entity.
