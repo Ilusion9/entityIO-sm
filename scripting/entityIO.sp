@@ -798,7 +798,7 @@ public int Native_FindEntityOutputOffset(Handle plugin, int numParams)
 			char externalName[256];
 			GetStringFromAddress(addressName, externalName, sizeof(externalName));
 			
-			if (!StrEqual(externalName, output, true))
+			if (!StrEqual(externalName, output, false))
 			{
 				continue;
 			}
@@ -899,7 +899,7 @@ public int Native_HasEntityInput(Handle plugin, int numParams)
 			char externalName[256];
 			GetStringFromAddress(addressName, externalName, sizeof(externalName));
 			
-			if (!StrEqual(externalName, input, true))
+			if (!StrEqual(externalName, input, false))
 			{
 				continue;
 			}
@@ -952,7 +952,7 @@ public int Native_HasEntityOutput(Handle plugin, int numParams)
 			char externalName[256];
 			GetStringFromAddress(addressName, externalName, sizeof(externalName));
 			
-			if (!StrEqual(externalName, output, true))
+			if (!StrEqual(externalName, output, false))
 			{
 				continue;
 			}
