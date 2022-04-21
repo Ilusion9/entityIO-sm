@@ -1,5 +1,5 @@
 # Descriptions
-Forwards and Natives for entity inputs and outputs. Only tested in CSGO (windows and linux) and CSS (windows). Might work in TF2, L4D2, DOD. To use return Plugin_Changed in EntityIO_OnEntityInput you must have SM 1.11 build 6871 or higher.
+Forwards and Natives for entity inputs and outputs. Only tested in CSGO (windows and linux) and CSS (windows). Might work in TF2, L4D2, DOD.
 
 # Dependencies
 dhooks - https://forums.alliedmods.net/showpost.php?p=2588686&postcount=589
