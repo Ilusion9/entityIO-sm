@@ -95,18 +95,25 @@
 				"mac"			"0"
 			}
 			
-			"datamap_t::baseMap"
-			{
-				"windows"		"12"
-				"linux"			"12"
-				"mac"			"12"
-			}
-			
 			"datamap_t::dataNumFields"
 			{
 				"windows"		"4"
 				"linux"			"4"
 				"mac"			"4"
+			}
+			
+			"datamap_t::dataClassName"
+			{
+				"windows"		"8"
+				"linux"			"8"
+				"mac"			"8"
+			}
+			
+			"datamap_t::baseMap"
+			{
+				"windows"		"12"
+				"linux"			"12"
+				"mac"			"12"
 			}
 			
 			"typedescription_t::fieldOffset"
