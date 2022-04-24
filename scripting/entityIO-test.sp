@@ -17,13 +17,16 @@ public void Output_OnEntityOutput(const char[] output, int caller, int activator
 		return;
 	}
 	
-	DisplayEntityOutputActions(caller, output);
-	PrintToServer("\n");
-	
 	DisplayEntityInputs(caller);
 	PrintToServer("\n");
 	
 	DisplayEntityOutputs(caller);
+	PrintToServer("\n");
+	
+	DisplayEntityOutputActions(caller, output);
+	PrintToServer("\n");
+	
+	DisplayAllEntityActions(caller);
 	PrintToServer("\n");
 }
 
@@ -143,6 +146,60 @@ public void EntityIO_OnEntityInput_Post(int entity, const char[] input, int acti
 	PrintToServer("\n");
 }
 
+void DisplayEntityInputs(int entity)
+{
+	char className[256];
+	GetEntityClassname(entity, className, sizeof(className));
+	
+	PrintToServer("Get all inputs of entity index %d (%s).", entity, className);
+	
+	Handle inputIter = EntityIO_FindEntityFirstInput(entity);
+	if (inputIter)
+	{
+		do
+		{
+			char input[256];
+			EntityIO_GetEntityInputName(inputIter, input, sizeof(input));
+			
+			PrintToServer("Input of entity index %d (%s): %s.", entity, className, input);
+			
+		} while (EntityIO_FindEntityNextInput(inputIter));
+	}
+	else
+	{
+		PrintToServer("No inputs of entity index %d (%s) found.", entity, className);
+	}
+	
+	delete inputIter;
+}
+
+void DisplayEntityOutputs(int entity)
+{
+	char className[256];
+	GetEntityClassname(entity, className, sizeof(className));
+	
+	PrintToServer("Get all outputs of entity index %d (%s).", entity, className);
+	
+	Handle outputIter = EntityIO_FindEntityFirstOutput(entity);
+	if (outputIter)
+	{
+		do
+		{
+			char output[256];
+			EntityIO_GetEntityOutputName(outputIter, output, sizeof(output));
+			
+			PrintToServer("Output of entity index %d (%s): %s (Offset: %d).", entity, className, output, EntityIO_GetEntityOutputOffset(outputIter));
+			
+		} while (EntityIO_FindEntityNextOutput(outputIter));
+	}
+	else
+	{
+		PrintToServer("No outputs of entity index %d (%s) found.", entity, className);
+	}
+	
+	delete outputIter;
+}
+
 void DisplayEntityOutputActions(int entity, const char[] output)
 {
 	int offset = EntityIO_FindEntityOutputOffset(entity, output);
@@ -151,75 +208,85 @@ void DisplayEntityOutputActions(int entity, const char[] output)
 		return;
 	}
 	
-	PrintToServer("(func_button) Output offset for OnPressed: %d.", offset);
-	PrintToServer("\n");
+	char className[256];
+	GetEntityClassname(entity, className, sizeof(className));
 	
-	PrintToServer("(func_button) Get all actions of entity (OnPressed output).");
+	PrintToServer("Get all actions of entity index %d (%s) (Output: %s).", entity, className, output);
 	
-	Address address;
-	if (EntityIO_FindEntityFirstOutputAction(entity, offset, address))
+	Handle actionIter = EntityIO_FindEntityFirstOutputAction(entity, offset);
+	if (actionIter)
 	{
 		do
 		{
 			char target[256];
-			EntityIO_GetEntityOutputActionTarget(address, target, sizeof(target));
+			EntityIO_GetEntityOutputActionTarget(actionIter, target, sizeof(target));
 			
 			char input[256];
-			EntityIO_GetEntityOutputActionInput(address, input, sizeof(input));
+			EntityIO_GetEntityOutputActionInput(actionIter, input, sizeof(input));
 			
 			char param[256];
-			EntityIO_GetEntityOutputActionParam(address, param, sizeof(param));
+			EntityIO_GetEntityOutputActionParam(actionIter, param, sizeof(param));
 			
-			PrintToServer("(func_button) Action: %s:%s:%s:%f:%d (Id: %d).", target, input, param, EntityIO_GetEntityOutputActionDelay(address), EntityIO_GetEntityOutputActionTimesToFire(address), EntityIO_GetEntityOutputActionID(address));
+			PrintToServer("Action of entity index %d (%s) (Output: %s): %s:%s:%s:%f:%d (Id: %d).", entity, className, output, target, input, param, EntityIO_GetEntityOutputActionDelay(actionIter), EntityIO_GetEntityOutputActionTimesToFire(actionIter), EntityIO_GetEntityOutputActionID(actionIter));
 			
-		} while (EntityIO_FindEntityNextOutputAction(address));
+		} while (EntityIO_FindEntityNextOutputAction(actionIter));
 	}
 	else
 	{
-		PrintToServer("(func_button) No actions of entity found (OnPressed output).");
+		PrintToServer("No actions of entity index %d (%s) (Output: %s).", entity, className, output);
 	}
+	
+	delete actionIter;
 }
 
-void DisplayEntityInputs(int entity)
+void DisplayAllEntityActions(int entity)
 {
-	PrintToServer("(func_button) Get all inputs of entity.");
+	char className[256];
+	GetEntityClassname(entity, className, sizeof(className));
 	
-	Address dataMap, address;
-	if (EntityIO_FindEntityFirstInput(entity, dataMap, address))
-	{
-		do
-		{
-			char input[256];
-			EntityIO_GetEntityInputName(address, input, sizeof(input));
-			
-			PrintToServer("(func_button) Input: %s.", input);
-			
-		} while (EntityIO_FindEntityNextInput(dataMap, address));
-	}
-	else
-	{
-		PrintToServer("(func_button) No inputs of entity found.");
-	}
-}
-
-void DisplayEntityOutputs(int entity)
-{
-	PrintToServer("(func_button) Get all outputs of entity.");
+	PrintToServer("Get all actions of entity index %d (%s).", entity, className);
 	
-	Address dataMap, address;
-	if (EntityIO_FindEntityFirstOutput(entity, dataMap, address))
+	Handle outputIter = EntityIO_FindEntityFirstOutput(entity);
+	if (outputIter)
 	{
 		do
 		{
 			char output[256];
-			EntityIO_GetEntityOutputName(address, output, sizeof(output));
+			EntityIO_GetEntityOutputName(outputIter, output, sizeof(output));
 			
-			PrintToServer("(func_button) Output: %s (Offset: %d).", output, EntityIO_GetEntityOutputOffset(address));
+			int offset = EntityIO_GetEntityOutputOffset(outputIter);
 			
-		} while (EntityIO_FindEntityNextOutput(dataMap, address));
+			Handle actionIter = EntityIO_FindEntityFirstOutputAction(entity, offset);
+			if (actionIter)
+			{
+				do
+				{
+					char target[256];
+					EntityIO_GetEntityOutputActionTarget(actionIter, target, sizeof(target));
+					
+					char input[256];
+					EntityIO_GetEntityOutputActionInput(actionIter, input, sizeof(input));
+					
+					char param[256];
+					EntityIO_GetEntityOutputActionParam(actionIter, param, sizeof(param));
+					
+					PrintToServer("Action of entity index %d (%s) (Output: %s): %s:%s:%s:%f:%d (Id: %d).", entity, className, output, target, input, param, EntityIO_GetEntityOutputActionDelay(actionIter), EntityIO_GetEntityOutputActionTimesToFire(actionIter), EntityIO_GetEntityOutputActionID(actionIter));
+					
+				} while (EntityIO_FindEntityNextOutputAction(actionIter));
+			}
+			else
+			{
+				PrintToServer("No actions of entity index %d (%s) (Output: %s).", entity, className, output);
+			}
+			
+			delete actionIter;
+			
+		} while (EntityIO_FindEntityNextOutput(outputIter));
 	}
 	else
 	{
 		PrintToServer("(func_button) No outputs of entity found.");
 	}
+	
+	delete outputIter;
 }
