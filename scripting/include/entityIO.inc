@@ -36,22 +36,22 @@ enum struct EntityIO_VariantInfo
  * @param activator          Activator's index.
  * @param caller             Caller's index.
  * @param variantInfo        Parameter's type and value.
- * @param outputId           Output's ID.
+ * @param actionId           Action's ID.
  * @return                   Plugin_Handled or Plugin_Stop to block the input from being processed, Plugin_Continue otherwise.
  */
-forward Action EntityIO_OnEntityInput(int entity, char input[256], int& activator, int& caller, EntityIO_VariantInfo variantInfo, int outputId);
+forward Action EntityIO_OnEntityInput(int entity, char input[256], int& activator, int& caller, EntityIO_VariantInfo variantInfo, int actionId);
 
 /**
  * Called after an entity receives an input.
  *
- * @param entity           Entity's index.
- * @param input            Input's name.
- * @param activator        Activator's index.
- * @param caller           Caller's index.
- * @param param            Parameter's type and value.
- * @param outputId         Output's ID.
+ * @param entity             Entity's index.
+ * @param input              Input's name.
+ * @param activator          Activator's index.
+ * @param caller             Caller's index.
+ * @param variantInfo        Parameter's type and value.
+ * @param actionId           Action's ID.
  */
-forward void EntityIO_OnEntityInput_Post(int entity, const char[] input, int activator, int caller, EntityIO_VariantInfo variantInfo, int outputId);
+forward void EntityIO_OnEntityInput_Post(int entity, const char[] input, int activator, int caller, EntityIO_VariantInfo variantInfo, int actionId);
 
 /**
  * Returns whether or not an input can be accepted by an entity.
@@ -244,6 +244,57 @@ native int EntityIO_GetEntityOutputActionID(Handle iterator);
  */
 native float EntityIO_GetEntityOutputActionDelay(Handle iterator);
 
+/**
+ * Sets an action's target to an entity's output.
+ *
+ * @param iterator        Handle to search.
+ * @param target          Action's target.
+ * @error                 Invalid handle.
+ */
+native void EntityIO_SetEntityOutputActionTarget(Handle iterator, const char[] target);
+
+/**
+ * Sets an action's input to an entity's output.
+ *
+ * @param iterator        Handle to search.
+ * @param input           Action's input.
+ * @error                 Invalid handle.
+ */
+native void EntityIO_SetEntityOutputActionInput(Handle iterator, const char[] input);
+
+/**
+ * Sets an action's parameter to an entity's output.
+ *
+ * @param iterator        Handle to search.
+ * @param param           Action's parameter.
+ * @error                 Invalid handle.
+ */
+native void EntityIO_SetEntityOutputActionParam(Handle iterator, const char[] param);
+
+/**
+ * Sets an action's remaining times to fire to an entity's output.
+ *
+ * @param iterator           Handle to search.
+ * @param timesToFire        Action's times to fire.
+ */
+native void EntityIO_SetEntityOutputActionTimesToFire(Handle iterator, int timesToFire);
+
+/**
+ * Sets an action's ID to an entity's output.
+ *
+ * @param iterator        Handle to search.
+ * @param actionId        Action's ID.
+ */
+native void EntityIO_SetEntityOutputActionID(Handle iterator, int actionId);
+
+/**
+ * Sets an action's delay to an entity's output.
+ *
+ * @param iterator        Handle to search.
+ * @param delay           Action's delay.
+ */
+native void EntityIO_SetEntityOutputActionDelay(Handle iterator, float delay);
+
 /* DO NOT EDIT BELOW THIS LINE */
 
 public SharedPlugin __pl_entityIO = 
@@ -281,5 +332,11 @@ public void __pl_entityIO_SetNTVOptional()
 	MarkNativeAsOptional("EntityIO_GetEntityOutputActionDelay");
 	MarkNativeAsOptional("EntityIO_GetEntityOutputActionTimesToFire");
 	MarkNativeAsOptional("EntityIO_GetEntityOutputActionID");
+	MarkNativeAsOptional("EntityIO_SetEntityOutputActionTarget");
+	MarkNativeAsOptional("EntityIO_SetEntityOutputActionInput");
+	MarkNativeAsOptional("EntityIO_SetEntityOutputActionParams");
+	MarkNativeAsOptional("EntityIO_SetEntityOutputActionDelay");
+	MarkNativeAsOptional("EntityIO_SetEntityOutputActionTimesToFire");
+	MarkNativeAsOptional("EntityIO_SetEntityOutputActionID");
 }
 #endif
