@@ -74,7 +74,7 @@
 				"mac"			"20"
 			}
 			
-			"CEventAction::s_iNextIDStamp"
+			"CEventAction::m_pNext"
 			{
 				"windows"		"24"
 				"linux"			"24"
