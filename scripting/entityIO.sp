@@ -115,6 +115,12 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("EntityIO_GetEntityOutputActionDelay", Native_GetEntityOutputActionDelay);
 	CreateNative("EntityIO_GetEntityOutputActionTimesToFire", Native_GetEntityOutputActionTimesToFire);
 	CreateNative("EntityIO_GetEntityOutputActionID", Native_GetEntityOutputActionID);
+	CreateNative("EntityIO_SetEntityOutputActionTarget", Native_SetEntityOutputActionTarget);
+	CreateNative("EntityIO_SetEntityOutputActionInput", Native_SetEntityOutputActionInput);
+	CreateNative("EntityIO_SetEntityOutputActionParam", Native_SetEntityOutputActionParam);
+	CreateNative("EntityIO_SetEntityOutputActionDelay", Native_SetEntityOutputActionDelay);
+	CreateNative("EntityIO_SetEntityOutputActionTimesToFire", Native_SetEntityOutputActionTimesToFire);
+	CreateNative("EntityIO_SetEntityOutputActionID", Native_SetEntityOutputActionID);
 	
 	RegPluginLibrary("entityIO");
 }
@@ -187,10 +193,10 @@ public void OnPluginStart()
 		SetFailState("Failed to load \"CEventAction::m_iIDStamp\" offset.");
 	}
 	
-	g_Offset_ActionNext = GameConfGetOffset(configFile, "CEventAction::s_iNextIDStamp");
+	g_Offset_ActionNext = GameConfGetOffset(configFile, "CEventAction::m_pNext");
 	if (g_Offset_ActionNext == -1)
 	{
-		SetFailState("Failed to load \"CEventAction::s_iNextIDStamp\" offset.");
+		SetFailState("Failed to load \"CEventAction::m_pNext\" offset.");
 	}
 	
 	int getDataDescMapOffset = GameConfGetOffset(configFile, "CBaseEntity::GetDataDescMap");
@@ -263,7 +269,7 @@ public void OnPluginStart()
 	
 	if (!g_SDKCall_GetDataDescMap)
 	{
-		SetFailState("Failed to set up \"GetDataDescMap\" call.");
+		SetFailState("Failed to prepare \"CBaseEntity::GetDataDescMap\" call.");
 	}
 	
 	g_List_BaseEntityInputs = new ArrayList(ByteCountToCells(256));
@@ -389,7 +395,7 @@ public MRESReturn DHook_AcceptInput(int pThis, Handle hReturn, Handle hParams)
 		}
 	}
 	
-	int outputId = DHookGetParam(hParams, 5);	
+	int actionId = DHookGetParam(hParams, 5);	
 	
 	Action result = Plugin_Continue;
 	Call_StartForward(g_Forward_OnEntityInput);
@@ -398,7 +404,7 @@ public MRESReturn DHook_AcceptInput(int pThis, Handle hReturn, Handle hParams)
 	Call_PushCellRef(activator);
 	Call_PushCellRef(caller);
 	Call_PushArrayEx(variantInfo, sizeof(EntityIO_VariantInfo), SM_PARAM_COPYBACK);
-	Call_PushCell(outputId);
+	Call_PushCell(actionId);
 	Call_Finish(result);
 	
 	if (result == Plugin_Handled || result == Plugin_Stop)
@@ -589,7 +595,7 @@ public MRESReturn DHook_AcceptInput_Post(int pThis, Handle hReturn, Handle hPara
 		}
 	}
 	
-	int outputId = DHookGetParam(hParams, 5);	
+	int actionId = DHookGetParam(hParams, 5);	
 	
 	Call_StartForward(g_Forward_OnEntityInput_Post);
 	Call_PushCell(pThis);
@@ -597,7 +603,7 @@ public MRESReturn DHook_AcceptInput_Post(int pThis, Handle hReturn, Handle hPara
 	Call_PushCell(activator);
 	Call_PushCell(caller);
 	Call_PushArray(variantInfo, sizeof(EntityIO_VariantInfo));
-	Call_PushCell(outputId);
+	Call_PushCell(actionId);
 	Call_Finish();
 	
 	return MRES_Ignored;
@@ -611,16 +617,10 @@ void GetBaseEntityMapData(Address dataMap)
 		int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
 		for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
 		{
-			Address address = view_as<Address>(LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldName), NumberType_Int32));
-			if (address == Address_Null)
-			{
-				continue;
-			}
-			
 			char externalName[256];
-			GetStringFromAddress(address, externalName, sizeof(externalName));
+			GetStringFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldName), externalName, sizeof(externalName));
 			
-			int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int16);
+			int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
 			if (view_as<bool>(flags & FIELDTYPE_DESC_INPUT))
 			{
 				g_List_BaseEntityInputs.PushString(externalName);
@@ -640,18 +640,39 @@ void GetBaseEntityMapData(Address dataMap)
 	}
 }
 
+void SetStringToAddress(Address address, const char[] buffer)
+{
+	address = view_as<Address>(LoadFromAddress(address, NumberType_Int32));
+	if (address == Address_Null)
+	{
+		return;
+	}
+	
+	int length = strlen(buffer);
+	for (int i = 0; i < length; i++)
+	{
+		StoreToAddress(address + view_as<Address>(i), view_as<int>(buffer[i]), NumberType_Int8);
+	}
+	
+	StoreToAddress(address + view_as<Address>(length), view_as<int>(Address_Null), NumberType_Int8);
+}
+
 int GetStringFromAddress(Address address, char[] buffer, int maxLen)
 {
+	address = view_as<Address>(LoadFromAddress(address, NumberType_Int32));
+	if (address == Address_Null)
+	{
+		return 0;
+	}
+	
 	int i;
-	while (i < maxLen)
+	for (i = 0; i < maxLen; i++)
 	{
 		buffer[i] = view_as<char>(LoadFromAddress(address + view_as<Address>(i), NumberType_Int8));
 		if (!buffer[i])
 		{
 			break;
 		}
-		
-		i++;
 	}
 	
 	return i;
@@ -676,22 +697,18 @@ public int Native_HasEntityInput(Handle plugin, int numParams)
 	
 	while (dataMap != Address_Null)
 	{
-		Address addressClass = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), NumberType_Int32));
-		if (addressClass)
+		char className[256];
+		GetStringFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), className, sizeof(className));
+		
+		// do not search in BaseEntity map
+		if (StrEqual(className, "CBaseEntity", true))
 		{
-			char className[256];
-			GetStringFromAddress(addressClass, className, sizeof(className));
-			
-			// do not search in BaseEntity map
-			if (StrEqual(className, "CBaseEntity", true))
+			if (!g_IsBaseEntityMapDataRetrieved)
 			{
-				if (!g_IsBaseEntityMapDataRetrieved)
-				{
-					GetBaseEntityMapData(dataMap);
-				}
-				
-				break;
+				GetBaseEntityMapData(dataMap);
 			}
+			
+			break;
 		}
 		
 		Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
@@ -700,20 +717,14 @@ public int Native_HasEntityInput(Handle plugin, int numParams)
 			int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
 			for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
 			{
-				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int16);
+				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
 				if (!view_as<bool>(flags & FIELDTYPE_DESC_INPUT))
 				{
 					continue;
 				}
 				
-				Address addressName = view_as<Address>(LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldName), NumberType_Int32));
-				if (addressName == Address_Null)
-				{
-					continue;
-				}
-				
 				char externalName[256];
-				GetStringFromAddress(addressName, externalName, sizeof(externalName));
+				GetStringFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldName), externalName, sizeof(externalName));
 				
 				if (!StrEqual(input, externalName, false))
 				{
@@ -754,22 +765,18 @@ public int Native_FindEntityFirstInput(Handle plugin, int numParams)
 	Address dataMap = view_as<Address>(SDKCall(g_SDKCall_GetDataDescMap, entity));
 	while (dataMap != Address_Null)
 	{
-		Address addressClass = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), NumberType_Int32));
-		if (addressClass)
+		char className[256];
+		GetStringFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), className, sizeof(className));
+		
+		// do not search in BaseEntity map
+		if (StrEqual(className, "CBaseEntity", true))
 		{
-			char className[256];
-			GetStringFromAddress(addressClass, className, sizeof(className));
-			
-			// do not search in BaseEntity map
-			if (StrEqual(className, "CBaseEntity", true))
+			if (!g_IsBaseEntityMapDataRetrieved)
 			{
-				if (!g_IsBaseEntityMapDataRetrieved)
-				{
-					GetBaseEntityMapData(dataMap);
-				}
-				
-				break;
+				GetBaseEntityMapData(dataMap);
 			}
+			
+			break;
 		}
 		
 		Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
@@ -778,7 +785,7 @@ public int Native_FindEntityFirstInput(Handle plugin, int numParams)
 			int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
 			for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
 			{
-				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int16);
+				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
 				if (!view_as<bool>(flags & FIELDTYPE_DESC_INPUT))
 				{
 					continue;
@@ -835,22 +842,18 @@ public int Native_FindEntityNextInput(Handle plugin, int numParams)
 	
 	while (dataMap != Address_Null)
 	{
-		Address addressClass = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), NumberType_Int32));
-		if (addressClass)
+		char className[256];
+		GetStringFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), className, sizeof(className));
+		
+		// do not search in BaseEntity map
+		if (StrEqual(className, "CBaseEntity", true))
 		{
-			char className[256];
-			GetStringFromAddress(addressClass, className, sizeof(className));
-			
-			// do not search in BaseEntity map
-			if (StrEqual(className, "CBaseEntity", true))
+			if (!g_IsBaseEntityMapDataRetrieved)
 			{
-				if (!g_IsBaseEntityMapDataRetrieved)
-				{
-					GetBaseEntityMapData(dataMap);
-				}
-				
-				break;
+				GetBaseEntityMapData(dataMap);
 			}
+			
+			break;
 		}
 		
 		Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
@@ -859,7 +862,7 @@ public int Native_FindEntityNextInput(Handle plugin, int numParams)
 			int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
 			for (int i = dataIndex; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
 			{
-				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int16);
+				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
 				if (!view_as<bool>(flags & FIELDTYPE_DESC_INPUT))
 				{
 					continue;
@@ -913,11 +916,7 @@ public int Native_GetEntityInputName(Handle plugin, int numParams)
 	
 	if (dataMap != Address_Null)
 	{
-		Address address = view_as<Address>(LoadFromAddress(dataDesc + view_as<Address>(dataIndex + g_Offset_DataFieldName), NumberType_Int32));
-		if (address != Address_Null)
-		{
-			length = GetStringFromAddress(address, buffer, maxLen);
-		}
+		length = GetStringFromAddress(dataDesc + view_as<Address>(dataIndex + g_Offset_DataFieldName), buffer, maxLen);
 	}
 	else
 	{
@@ -947,22 +946,18 @@ public int Native_HasEntityOutput(Handle plugin, int numParams)
 	
 	while (dataMap != Address_Null)
 	{
-		Address addressClass = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), NumberType_Int32));
-		if (addressClass)
+		char className[256];
+		GetStringFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), className, sizeof(className));
+		
+		// do not search in BaseEntity map
+		if (StrEqual(className, "CBaseEntity", true))
 		{
-			char className[256];
-			GetStringFromAddress(addressClass, className, sizeof(className));
-			
-			// do not search in BaseEntity map
-			if (StrEqual(className, "CBaseEntity", true))
+			if (!g_IsBaseEntityMapDataRetrieved)
 			{
-				if (!g_IsBaseEntityMapDataRetrieved)
-				{
-					GetBaseEntityMapData(dataMap);
-				}
-				
-				break;
+				GetBaseEntityMapData(dataMap);
 			}
+			
+			break;
 		}
 		
 		Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
@@ -971,20 +966,14 @@ public int Native_HasEntityOutput(Handle plugin, int numParams)
 			int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
 			for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
 			{
-				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int16);
+				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
 				if (!view_as<bool>(flags & FIELDTYPE_DESC_OUTPUT))
 				{
 					continue;
 				}
 				
-				Address addressName = view_as<Address>(LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldName), NumberType_Int32));
-				if (addressName == Address_Null)
-				{
-					continue;
-				}
-				
 				char externalName[256];
-				GetStringFromAddress(addressName, externalName, sizeof(externalName));
+				GetStringFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldName), externalName, sizeof(externalName));
 				
 				if (!StrEqual(output, externalName, false))
 				{
@@ -1028,22 +1017,18 @@ public int Native_FindEntityOutputOffset(Handle plugin, int numParams)
 	Address dataMap = view_as<Address>(SDKCall(g_SDKCall_GetDataDescMap, entity));
 	while (dataMap != Address_Null)
 	{
-		Address addressClass = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), NumberType_Int32));
-		if (addressClass)
+		char className[256];
+		GetStringFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), className, sizeof(className));
+		
+		// do not search in BaseEntity map
+		if (StrEqual(className, "CBaseEntity", true))
 		{
-			char className[256];
-			GetStringFromAddress(addressClass, className, sizeof(className));
-			
-			// do not search in BaseEntity map
-			if (StrEqual(className, "CBaseEntity", true))
+			if (!g_IsBaseEntityMapDataRetrieved)
 			{
-				if (!g_IsBaseEntityMapDataRetrieved)
-				{
-					GetBaseEntityMapData(dataMap);
-				}
-				
-				break;
+				GetBaseEntityMapData(dataMap);
 			}
+			
+			break;
 		}
 		
 		Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
@@ -1052,27 +1037,21 @@ public int Native_FindEntityOutputOffset(Handle plugin, int numParams)
 			int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
 			for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
 			{
-				int flags = LoadFromAddress(dataDesc + view_as<Address>(g_Offset_DataFieldFlags + i), NumberType_Int16);
+				int flags = LoadFromAddress(dataDesc + view_as<Address>(g_Offset_DataFieldFlags + i), NumberType_Int32);
 				if (!view_as<bool>(flags & FIELDTYPE_DESC_OUTPUT))
 				{
 					continue;
 				}
 				
-				Address addressName = view_as<Address>(LoadFromAddress(dataDesc + view_as<Address>(g_Offset_DataFieldName + i), NumberType_Int32));
-				if (addressName == Address_Null)
-				{
-					continue;
-				}
-				
 				char externalName[256];
-				GetStringFromAddress(addressName, externalName, sizeof(externalName));
+				GetStringFromAddress(dataDesc + view_as<Address>(g_Offset_DataFieldName + i), externalName, sizeof(externalName));
 				
 				if (!StrEqual(output, externalName, false))
 				{
 					continue;
 				}
 				
-				return view_as<int>(LoadFromAddress(dataDesc + view_as<Address>(g_Offset_DataFieldOffset + i), NumberType_Int16));
+				return view_as<int>(LoadFromAddress(dataDesc + view_as<Address>(g_Offset_DataFieldOffset + i), NumberType_Int32));
 			}
 		}
 		
@@ -1106,22 +1085,18 @@ public int Native_FindEntityFirstOutput(Handle plugin, int numParams)
 	Address dataMap = view_as<Address>(SDKCall(g_SDKCall_GetDataDescMap, entity));
 	while (dataMap != Address_Null)
 	{
-		Address addressClass = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), NumberType_Int32));
-		if (addressClass)
+		char className[256];
+		GetStringFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), className, sizeof(className));
+		
+		// do not search in BaseEntity map
+		if (StrEqual(className, "CBaseEntity", true))
 		{
-			char className[256];
-			GetStringFromAddress(addressClass, className, sizeof(className));
-			
-			// do not search in BaseEntity map
-			if (StrEqual(className, "CBaseEntity", true))
+			if (!g_IsBaseEntityMapDataRetrieved)
 			{
-				if (!g_IsBaseEntityMapDataRetrieved)
-				{
-					GetBaseEntityMapData(dataMap);
-				}
-				
-				break;
+				GetBaseEntityMapData(dataMap);
 			}
+			
+			break;
 		}
 		
 		Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
@@ -1130,7 +1105,7 @@ public int Native_FindEntityFirstOutput(Handle plugin, int numParams)
 			int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
 			for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
 			{
-				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int16);
+				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
 				if (!view_as<bool>(flags & FIELDTYPE_DESC_OUTPUT))
 				{
 					continue;
@@ -1187,22 +1162,18 @@ public int Native_FindEntityNextOutput(Handle plugin, int numParams)
 	
 	while (dataMap != Address_Null)
 	{
-		Address addressClass = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), NumberType_Int32));
-		if (addressClass)
+		char className[256];
+		GetStringFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), className, sizeof(className));
+		
+		// do not search in BaseEntity map
+		if (StrEqual(className, "CBaseEntity", true))
 		{
-			char className[256];
-			GetStringFromAddress(addressClass, className, sizeof(className));
-			
-			// do not search in BaseEntity map
-			if (StrEqual(className, "CBaseEntity", true))
+			if (!g_IsBaseEntityMapDataRetrieved)
 			{
-				if (!g_IsBaseEntityMapDataRetrieved)
-				{
-					GetBaseEntityMapData(dataMap);
-				}
-				
-				break;
+				GetBaseEntityMapData(dataMap);
 			}
+			
+			break;
 		}
 		
 		Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
@@ -1211,7 +1182,7 @@ public int Native_FindEntityNextOutput(Handle plugin, int numParams)
 			int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
 			for (int i = dataIndex; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
 			{
-				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int16);
+				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
 				if (!view_as<bool>(flags & FIELDTYPE_DESC_OUTPUT))
 				{
 					continue;
@@ -1265,11 +1236,7 @@ public int Native_GetEntityOutputName(Handle plugin, int numParams)
 	
 	if (dataMap != Address_Null)
 	{
-		Address address = view_as<Address>(LoadFromAddress(dataDesc + view_as<Address>(dataIndex + g_Offset_DataFieldName), NumberType_Int32));
-		if (address != Address_Null)
-		{
-			length = GetStringFromAddress(address, buffer, maxLen);
-		}
+		length = GetStringFromAddress(dataDesc + view_as<Address>(dataIndex + g_Offset_DataFieldName), buffer, maxLen);
 	}
 	else
 	{
@@ -1411,13 +1378,9 @@ public int Native_GetEntityOutputActionTarget(Handle plugin, int numParams)
 	int maxLen = GetNativeCell(3);
 	char[] buffer = new char[maxLen];
 	
-	address = view_as<Address>(LoadFromAddress(address + view_as<Address>(g_Offset_ActionTarget), NumberType_Int32));
-	if (address != Address_Null)
-	{
-		length = GetStringFromAddress(address, buffer, maxLen);
-	}
-	
+	length = GetStringFromAddress(address + view_as<Address>(g_Offset_ActionTarget), buffer, maxLen);	
 	SetNativeString(2, buffer, maxLen);
+	
 	return length;
 }
 
@@ -1436,13 +1399,9 @@ public int Native_GetEntityOutputActionInput(Handle plugin, int numParams)
 	int maxLen = GetNativeCell(3);
 	char[] buffer = new char[maxLen];
 	
-	address = view_as<Address>(LoadFromAddress(address + view_as<Address>(g_Offset_ActionInput), NumberType_Int32));
-	if (address != Address_Null)
-	{
-		length = GetStringFromAddress(address, buffer, maxLen);
-	}
-	
+	length = GetStringFromAddress(address + view_as<Address>(g_Offset_ActionInput), buffer, maxLen);
 	SetNativeString(2, buffer, maxLen);
+	
 	return length;
 }
 
@@ -1461,13 +1420,9 @@ public int Native_GetEntityOutputActionParam(Handle plugin, int numParams)
 	int maxLen = GetNativeCell(3);
 	char[] buffer = new char[maxLen];
 	
-	address = view_as<Address>(LoadFromAddress(address + view_as<Address>(g_Offset_ActionParam), NumberType_Int32));
-	if (address != Address_Null)
-	{
-		length = GetStringFromAddress(address, buffer, maxLen);
-	}
-	
+	length = GetStringFromAddress(address + view_as<Address>(g_Offset_ActionParam), buffer, maxLen);	
 	SetNativeString(2, buffer, maxLen);
+	
 	return length;
 }
 
@@ -1511,4 +1466,109 @@ public int Native_GetEntityOutputActionID(Handle plugin, int numParams)
 	iterator.GetValue("actionAddress", address);
 	
 	return view_as<int>(LoadFromAddress(address + view_as<Address>(g_Offset_ActionIDStamp), NumberType_Int32));
+}
+
+public int Native_SetEntityOutputActionTarget(Handle plugin, int numParams)
+{
+	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
+	if (!iterator)
+	{
+		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid handle %d", view_as<int>(iterator));
+	}
+	
+	Address address;
+	iterator.GetValue("actionAddress", address);
+	
+	char buffer[256];
+	GetNativeString(2, buffer, sizeof(buffer));
+	
+	SetStringToAddress(address + view_as<Address>(g_Offset_ActionTarget), buffer);
+	return 0;
+}
+
+public int Native_SetEntityOutputActionInput(Handle plugin, int numParams)
+{
+	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
+	if (!iterator)
+	{
+		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid handle %d", view_as<int>(iterator));
+	}
+	
+	Address address;
+	iterator.GetValue("actionAddress", address);
+	
+	char buffer[256];
+	GetNativeString(2, buffer, sizeof(buffer));
+	
+	SetStringToAddress(address + view_as<Address>(g_Offset_ActionInput), buffer);
+	return 0;
+}
+
+public int Native_SetEntityOutputActionParam(Handle plugin, int numParams)
+{
+	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
+	if (!iterator)
+	{
+		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid handle %d", view_as<int>(iterator));
+	}
+	
+	Address address;
+	iterator.GetValue("actionAddress", address);
+	
+	char buffer[256];
+	GetNativeString(2, buffer, sizeof(buffer));
+	
+	SetStringToAddress(address + view_as<Address>(g_Offset_ActionParam), buffer);
+	return 0;
+}
+
+public int Native_SetEntityOutputActionDelay(Handle plugin, int numParams)
+{
+	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
+	if (!iterator)
+	{
+		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid handle %d", view_as<int>(iterator));
+	}
+	
+	Address address;
+	iterator.GetValue("actionAddress", address);
+	
+	float delay = GetNativeCell(2);
+	StoreToAddress(address + view_as<Address>(g_Offset_ActionDelay), view_as<int>(delay), NumberType_Int32);
+	
+	return 0;
+}
+
+public int Native_SetEntityOutputActionTimesToFire(Handle plugin, int numParams)
+{
+	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
+	if (!iterator)
+	{
+		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid handle %d", view_as<int>(iterator));
+	}
+	
+	Address address;
+	iterator.GetValue("actionAddress", address);
+	
+	int timesToFire = GetNativeCell(2);
+	StoreToAddress(address + view_as<Address>(g_Offset_ActionTimesToFire), timesToFire, NumberType_Int32);
+	
+	return 0;
+}
+
+public int Native_SetEntityOutputActionID(Handle plugin, int numParams)
+{
+	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
+	if (!iterator)
+	{
+		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid handle %d", view_as<int>(iterator));
+	}
+	
+	Address address;
+	iterator.GetValue("actionAddress", address);
+	
+	int actionId = GetNativeCell(2);
+	StoreToAddress(address + view_as<Address>(g_Offset_ActionIDStamp), actionId, NumberType_Int32);
+	
+	return 0;
 }
