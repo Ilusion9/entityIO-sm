@@ -11,7 +11,7 @@ public Plugin myinfo =
 	name = "Entity Inputs & Outputs",
 	author = "Ilusion",
 	description = "Forwards and Natives for entity inputs and outputs.",
-	version = "1.0",
+	version = "1.1",
 	url = "https://github.com/Ilusion9/"
 };
 
@@ -34,25 +34,25 @@ public Plugin myinfo =
 enum EntityIO_VariantType
 {
 	EntityIO_VariantType_None,
-	EntityIO_VariantType_Float,
-	EntityIO_VariantType_String,
-	EntityIO_VariantType_Vector,
-	EntityIO_VariantType_Integer,
 	EntityIO_VariantType_Boolean,
 	EntityIO_VariantType_Character,
 	EntityIO_VariantType_Color,
 	EntityIO_VariantType_Entity,
-	EntityIO_VariantType_PosVector
+	EntityIO_VariantType_Float,
+	EntityIO_VariantType_Integer,
+	EntityIO_VariantType_PosVector,
+	EntityIO_VariantType_String,
+	EntityIO_VariantType_Vector
 }
 
 enum struct EntityIO_VariantInfo
 {
 	bool bValue;
 	int iValue;
-	float flValue;
-	char sValue[256];
 	int clrValue[4];
+	float flValue;
 	float vecValue[3];
+	char sValue[256];
 	EntityIO_VariantType variantType;
 }
 
@@ -62,7 +62,7 @@ enum struct OutputInfo
 	char output[256];
 }
 
-bool g_IsBaseEntityMapDataRetrieved;
+bool g_AreBaseEntityIOLoaded;
 
 int g_Offset_InputVariantType;
 int g_Offset_InputVariantSize;
@@ -123,10 +123,182 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("EntityIO_SetEntityOutputActionID", Native_SetEntityOutputActionID);
 	
 	RegPluginLibrary("entityIO");
+	return APLRes_Success;
 }
 
 public void OnPluginStart()
-{	
+{
+	LoadGameData();
+	
+	g_List_BaseEntityInputs = new ArrayList(ByteCountToCells(256));
+	g_List_BaseEntityOutputs = new ArrayList(sizeof(OutputInfo));
+	
+	g_Forward_OnEntityInput = new GlobalForward("EntityIO_OnEntityInput", ET_Hook, Param_Cell, Param_String, Param_CellByRef, Param_CellByRef, Param_Array, Param_Cell);
+	g_Forward_OnEntityInput_Post = new GlobalForward("EntityIO_OnEntityInput_Post", ET_Ignore, Param_Cell, Param_String, Param_Cell, Param_Cell, Param_Array, Param_Cell);
+	
+	int entity = -1;
+	while ((entity = FindEntityByClassname(entity, "*")) != -1)
+	{
+		DHookEntity(g_DHook_AcceptInput, false, entity, INVALID_FUNCTION, DHook_AcceptInput);
+		DHookEntity(g_DHook_AcceptInput, true, entity, INVALID_FUNCTION, DHook_AcceptInput_Post);
+	}
+}
+
+public void OnMapStart()
+{
+	g_AreBaseEntityIOLoaded = false;
+}
+
+public void OnEntityCreated(int entity, const char[] classname)
+{
+	DHookEntity(g_DHook_AcceptInput, false, entity, INVALID_FUNCTION, DHook_AcceptInput);
+	DHookEntity(g_DHook_AcceptInput, true, entity, INVALID_FUNCTION, DHook_AcceptInput_Post);
+}
+
+public void OnMapEnd()
+{
+	g_List_BaseEntityInputs.Clear();
+	g_List_BaseEntityOutputs.Clear();
+}
+
+public MRESReturn DHook_AcceptInput(int pThis, DHookReturn hReturn, DHookParam hParams)
+{
+	int activator = hParams.IsNull(2) ? -1 : hParams.Get(2);
+	int caller = hParams.IsNull(3) ? -1 : hParams.Get(3);
+	int actionId = hParams.Get(5);	
+	
+	char inputName[256];
+	hParams.GetString(1, inputName, sizeof(inputName));
+	
+	EntityIO_VariantInfo variantInfo;
+	int fieldType = hParams.GetObjectVar(4, g_Offset_InputVariantType, ObjectValueType_Int);
+	GetVariantFromDHookParam(hParams, 4, fieldType, variantInfo);
+	
+	Action result = Plugin_Continue;
+	Call_StartForward(g_Forward_OnEntityInput);
+	Call_PushCell(pThis);
+	Call_PushStringEx(inputName, sizeof(inputName), SM_PARAM_STRING_UTF8 | SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
+	Call_PushCellRef(activator);
+	Call_PushCellRef(caller);
+	Call_PushArrayEx(variantInfo, sizeof(EntityIO_VariantInfo), SM_PARAM_COPYBACK);
+	Call_PushCell(actionId);
+	Call_Finish(result);
+	
+	if (result == Plugin_Handled || result == Plugin_Stop)
+	{
+		hReturn.Value = false;
+		return MRES_Supercede;
+	}
+	
+	if (result == Plugin_Changed)
+	{
+		hParams.SetString(1, inputName);
+		hParams.Set(2, activator);
+		hParams.Set(3, caller);
+		
+		switch (variantInfo.variantType)
+		{
+			case EntityIO_VariantType_None:
+			{
+				hParams.SetObjectVar(4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_VOID);
+			}
+			
+			case EntityIO_VariantType_Float: 
+			{
+				hParams.SetObjectVar(4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_FLOAT);
+				hParams.SetObjectVar(4, 0, ObjectValueType_Float, variantInfo.flValue);
+			}
+			
+			case EntityIO_VariantType_String:
+			{
+				hParams.SetObjectVar(4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_STRING);
+				hParams.SetString(4, variantInfo.sValue);
+			}
+			
+			case EntityIO_VariantType_Vector:
+			{
+				hParams.SetObjectVar(4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_VECTOR);
+				hParams.SetObjectVarVector(4, 0, ObjectValueType_Vector, variantInfo.vecValue);
+			}
+			
+			case EntityIO_VariantType_Integer: 
+			{
+				hParams.SetObjectVar(4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_INTEGER);
+				hParams.SetObjectVar(4, 0, ObjectValueType_Int, variantInfo.iValue);
+			}
+			
+			case EntityIO_VariantType_Boolean: 
+			{
+				hParams.SetObjectVar(4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_BOOLEAN);
+				hParams.SetObjectVar(4, 0, ObjectValueType_Bool, variantInfo.bValue);
+			}
+			
+			case EntityIO_VariantType_Character: 
+			{
+				hParams.SetObjectVar(4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_CHARACTER);
+				hParams.SetObjectVar(4, 0, ObjectValueType_Int, variantInfo.iValue);
+			}
+			
+			case EntityIO_VariantType_Color:
+			{
+				int color = ((variantInfo.clrValue[0] & 0xFF) << 16) | ((variantInfo.clrValue[1] & 0xFF) << 8) | (variantInfo.clrValue[2] & 0xFF);
+				hParams.SetObjectVar(4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_COLOR32);
+				hParams.SetObjectVar(4, 0, ObjectValueType_Int, color);
+			}
+			
+			case EntityIO_VariantType_Entity: 
+			{
+				if (variantInfo.iValue != -1 && IsValidEntity(variantInfo.iValue))
+				{
+					hParams.SetObjectVar(4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_CLASSPTR);
+					hParams.SetObjectVar(4, 0, ObjectValueType_CBaseEntityPtr, variantInfo.iValue);
+				}
+				else
+				{
+					hParams.SetObjectVar(4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_VOID);
+				}
+			}
+			
+			case EntityIO_VariantType_PosVector:
+			{
+				hParams.SetObjectVar(4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_POSITION_VECTOR);
+				hParams.SetObjectVarVector(4, 0, ObjectValueType_Vector, variantInfo.vecValue);
+			}
+		}
+		
+		return MRES_ChangedHandled;
+	}
+	
+	return MRES_Ignored;
+}
+
+public MRESReturn DHook_AcceptInput_Post(int pThis, DHookReturn hReturn, DHookParam hParams)
+{
+	int activator = hParams.IsNull(2) ? -1 : hParams.Get(2);
+	int caller = hParams.IsNull(3) ? -1 : hParams.Get(3);
+	int actionId = hParams.Get(5);	
+	
+	char inputName[256];
+	hParams.GetString(1, inputName, sizeof(inputName));
+	
+	EntityIO_VariantInfo variantInfo;
+	int fieldType = hParams.GetObjectVar(4, g_Offset_InputVariantType, ObjectValueType_Int);
+	GetVariantFromDHookParam(hParams, 4, fieldType, variantInfo);
+	
+	Call_StartForward(g_Forward_OnEntityInput_Post);
+	Call_PushCell(pThis);
+	Call_PushString(inputName);
+	Call_PushCell(activator);
+	Call_PushCell(caller);
+	Call_PushArray(variantInfo, sizeof(EntityIO_VariantInfo));
+	Call_PushCell(actionId);
+	Call_Finish();
+	
+	return MRES_Ignored;
+}
+
+void LoadGameData()
+{
 	Handle configFile = LoadGameConfigFile("entityIO.games");
 	if (!configFile)
 	{
@@ -271,299 +443,90 @@ public void OnPluginStart()
 	{
 		SetFailState("Failed to prepare \"CBaseEntity::GetDataDescMap\" call.");
 	}
-	
-	g_List_BaseEntityInputs = new ArrayList(ByteCountToCells(256));
-	g_List_BaseEntityOutputs = new ArrayList(sizeof(OutputInfo));
-	
-	g_Forward_OnEntityInput = new GlobalForward("EntityIO_OnEntityInput", ET_Hook, Param_Cell, Param_String, Param_CellByRef, Param_CellByRef, Param_Array, Param_Cell);
-	g_Forward_OnEntityInput_Post = new GlobalForward("EntityIO_OnEntityInput_Post", ET_Ignore, Param_Cell, Param_String, Param_Cell, Param_Cell, Param_Array, Param_Cell);
-	
-	int entity = -1;
-	while ((entity = FindEntityByClassname(entity, "*")) != -1)
-	{
-		DHookEntity(g_DHook_AcceptInput, false, entity, INVALID_FUNCTION, DHook_AcceptInput);
-		DHookEntity(g_DHook_AcceptInput, true, entity, INVALID_FUNCTION, DHook_AcceptInput_Post);
-	}
 }
 
-public void OnMapStart()
+void GetBaseEntityIO(Address dataMap)
 {
-	g_IsBaseEntityMapDataRetrieved = false;
+	if (g_AreBaseEntityIOLoaded)
+	{
+		return;
+	}
+	
+	Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
+	if (dataDesc == Address_Null)
+	{
+		return;
+	}
+	
+	int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
+	for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
+	{
+		int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
+		
+		char externalName[256];
+		GetStringFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldName), externalName, sizeof(externalName));
+		
+		if (view_as<bool>(flags & FIELDTYPE_DESC_INPUT))
+		{
+			g_List_BaseEntityInputs.PushString(externalName);
+		}
+		
+		if (view_as<bool>(flags & FIELDTYPE_DESC_OUTPUT))
+		{
+			OutputInfo outputInfo;
+			outputInfo.offset = view_as<int>(LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldOffset), NumberType_Int32));
+			strcopy(outputInfo.output, sizeof(OutputInfo::output), externalName);
+			
+			g_List_BaseEntityOutputs.PushArray(outputInfo);
+		}
+	}
+	
+	g_AreBaseEntityIOLoaded = true;
 }
 
-public void OnMapEnd()
+void GetVariantFromDHookParam(DHookParam hParams, int paramNum, int fieldType, EntityIO_VariantInfo variantInfo)
 {
-	g_List_BaseEntityInputs.Clear();
-	g_List_BaseEntityOutputs.Clear();
-}
-
-public void OnEntityCreated(int entity, const char[] classname)
-{
-	DHookEntity(g_DHook_AcceptInput, false, entity, INVALID_FUNCTION, DHook_AcceptInput);
-	DHookEntity(g_DHook_AcceptInput, true, entity, INVALID_FUNCTION, DHook_AcceptInput_Post);
-}
-
-public MRESReturn DHook_AcceptInput(int pThis, Handle hReturn, Handle hParams)
-{
-	char input[256];
-	DHookGetParamString(hParams, 1, input, sizeof(input));
-	
-	int activator = -1;
-	if (!DHookIsNullParam(hParams, 2))
-	{
-		activator = DHookGetParam(hParams, 2);
-	}
-	
-	int caller = -1;
-	if (!DHookIsNullParam(hParams, 3))
-	{
-		caller = DHookGetParam(hParams, 3);
-	}
-	
-	EntityIO_VariantInfo variantInfo;
-	int variantType = DHookGetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int);
-	
-	switch (variantType)
-	{
-		case FIELDTYPE_FLOAT:
-		{
-			variantInfo.flValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Float);
-			variantInfo.variantType = EntityIO_VariantType_Float;
-		}
-		
-		case FIELDTYPE_STRING:
-		{
-			DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, variantInfo.sValue, sizeof(EntityIO_VariantInfo::sValue));
-			variantInfo.variantType = EntityIO_VariantType_String;
-		}
-		
-		case FIELDTYPE_VECTOR:
-		{
-			DHookGetParamObjectPtrVarVector(hParams, 4, 0, ObjectValueType_Vector, variantInfo.vecValue);
-			variantInfo.variantType = EntityIO_VariantType_Vector;
-		}
-		
-		case FIELDTYPE_INTEGER, FIELDTYPE_SHORT:
-		{
-			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int);
-			variantInfo.variantType = EntityIO_VariantType_Integer;
-		}
-		
-		case FIELDTYPE_BOOLEAN:
-		{
-			variantInfo.bValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Bool);
-			variantInfo.variantType = EntityIO_VariantType_Boolean;
-		}
-		
-		case FIELDTYPE_CHARACTER:
-		{
-			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int);
-			variantInfo.variantType = EntityIO_VariantType_Character;
-		}
-		
-		case FIELDTYPE_COLOR32:
-		{
-			int color = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int);
-			variantInfo.clrValue[0] = color & 0xFF;
-			variantInfo.clrValue[1] = (color >> 8) & 0xFF;
-			variantInfo.clrValue[2] = (color >> 16) & 0xFF;
-			variantInfo.clrValue[3] = (color >> 24) & 0xFF;
-			variantInfo.variantType = EntityIO_VariantType_Color;
-		}
-		
-		case FIELDTYPE_CLASSPTR:
-		{
-			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_CBaseEntityPtr);
-			variantInfo.variantType = EntityIO_VariantType_Entity;
-		}
-		
-		case FIELDTYPE_EHANDLE:
-		{
-			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Ehandle);
-			variantInfo.variantType = EntityIO_VariantType_Entity;
-		}
-		
-		case FIELDTYPE_POSITION_VECTOR:
-		{
-			DHookGetParamObjectPtrVarVector(hParams, 4, 0, ObjectValueType_Vector, variantInfo.vecValue);
-			variantInfo.variantType = EntityIO_VariantType_PosVector;
-		}
-		
-		default:
-		{
-			variantInfo.variantType = EntityIO_VariantType_None;
-		}
-	}
-	
-	int actionId = DHookGetParam(hParams, 5);	
-	
-	Action result = Plugin_Continue;
-	Call_StartForward(g_Forward_OnEntityInput);
-	Call_PushCell(pThis);
-	Call_PushStringEx(input, sizeof(input), SM_PARAM_STRING_UTF8 | SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
-	Call_PushCellRef(activator);
-	Call_PushCellRef(caller);
-	Call_PushArrayEx(variantInfo, sizeof(EntityIO_VariantInfo), SM_PARAM_COPYBACK);
-	Call_PushCell(actionId);
-	Call_Finish(result);
-	
-	if (result == Plugin_Handled || result == Plugin_Stop)
-	{
-		DHookSetReturn(hReturn, false);
-		return MRES_Supercede;
-	}
-	
-	if (result == Plugin_Changed)
-	{
-		DHookSetParamString(hParams, 1, input);
-		
-		if (activator == -1 || IsValidEntity(activator))
-		{
-			DHookSetParam(hParams, 2, activator);
-		}
-		
-		if (caller == -1 || IsValidEntity(caller))
-		{
-			DHookSetParam(hParams, 3, caller);
-		}
-		
-		switch (variantInfo.variantType)
-		{
-			case EntityIO_VariantType_None:
-			{
-				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_VOID);
-			}
-			
-			case EntityIO_VariantType_Float: 
-			{
-				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_FLOAT);
-				DHookSetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Float, variantInfo.flValue);
-			}
-			
-			case EntityIO_VariantType_String:
-			{
-				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_STRING);
-				DHookSetParamString(hParams, 4, variantInfo.sValue);
-			}
-			
-			case EntityIO_VariantType_Vector:
-			{
-				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_VECTOR);
-				DHookSetParamObjectPtrVarVector(hParams, 4, 0, ObjectValueType_Vector, variantInfo.vecValue);
-			}
-			
-			case EntityIO_VariantType_Integer: 
-			{
-				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_INTEGER);
-				DHookSetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int, variantInfo.iValue);
-			}
-			
-			case EntityIO_VariantType_Boolean: 
-			{
-				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_BOOLEAN);
-				DHookSetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Bool, variantInfo.bValue);
-			}
-			
-			case EntityIO_VariantType_Character: 
-			{
-				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_CHARACTER);
-				DHookSetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int, variantInfo.iValue);
-			}
-			
-			case EntityIO_VariantType_Color:
-			{
-				int color = ((variantInfo.clrValue[0] & 0xFF) << 16) | ((variantInfo.clrValue[1] & 0xFF) << 8) | (variantInfo.clrValue[2] & 0xFF);
-				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_COLOR32);
-				DHookSetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int, color);
-			}
-			
-			case EntityIO_VariantType_Entity: 
-			{
-				if (variantInfo.iValue != -1 && IsValidEntity(variantInfo.iValue))
-				{
-					DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_CLASSPTR);
-					DHookSetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_CBaseEntityPtr, variantInfo.iValue);
-				}
-				else
-				{
-					DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_VOID);
-				}
-			}
-			
-			case EntityIO_VariantType_PosVector:
-			{
-				DHookSetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int, FIELDTYPE_POSITION_VECTOR);
-				DHookSetParamObjectPtrVarVector(hParams, 4, 0, ObjectValueType_Vector, variantInfo.vecValue);
-			}
-		}
-		
-		return MRES_ChangedHandled;
-	}
-	
-	return MRES_Ignored;
-}
-
-public MRESReturn DHook_AcceptInput_Post(int pThis, Handle hReturn, Handle hParams)
-{
-	char input[256];
-	DHookGetParamString(hParams, 1, input, sizeof(input));
-	
-	int activator = -1;
-	if (!DHookIsNullParam(hParams, 2))
-	{
-		activator = DHookGetParam(hParams, 2);
-	}
-	
-	int caller = -1;
-	if (!DHookIsNullParam(hParams, 3))
-	{
-		caller = DHookGetParam(hParams, 3);
-	}
-	
-	EntityIO_VariantInfo variantInfo;
-	int fieldType = DHookGetParamObjectPtrVar(hParams, 4, g_Offset_InputVariantType, ObjectValueType_Int);
-	
 	switch (fieldType)
 	{
 		case FIELDTYPE_FLOAT:
 		{
-			variantInfo.flValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Float);
+			variantInfo.flValue = hParams.GetObjectVar(paramNum, 0, ObjectValueType_Float);
 			variantInfo.variantType = EntityIO_VariantType_Float;
 		}
 		
 		case FIELDTYPE_STRING:
 		{
-			DHookGetParamObjectPtrString(hParams, 4, 0, ObjectValueType_String, variantInfo.sValue, sizeof(EntityIO_VariantInfo::sValue));
+			hParams.GetObjectVarString(paramNum, 0, ObjectValueType_String, variantInfo.sValue, sizeof(EntityIO_VariantInfo::sValue));
 			variantInfo.variantType = EntityIO_VariantType_String;
 		}
 		
 		case FIELDTYPE_VECTOR:
 		{
-			DHookGetParamObjectPtrVarVector(hParams, 4, 0, ObjectValueType_Vector, variantInfo.vecValue);
+			hParams.GetObjectVarVector(paramNum, 0, ObjectValueType_Vector, variantInfo.vecValue);
 			variantInfo.variantType = EntityIO_VariantType_Vector;
 		}
 		
 		case FIELDTYPE_INTEGER, FIELDTYPE_SHORT:
 		{
-			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int);
+			variantInfo.iValue = hParams.GetObjectVar(paramNum, 0, ObjectValueType_Int);
 			variantInfo.variantType = EntityIO_VariantType_Integer;
 		}
 		
 		case FIELDTYPE_BOOLEAN:
 		{
-			variantInfo.bValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Bool);
+			variantInfo.bValue = hParams.GetObjectVar(paramNum, 0, ObjectValueType_Bool);
 			variantInfo.variantType = EntityIO_VariantType_Boolean;
 		}
 		
 		case FIELDTYPE_CHARACTER:
 		{
-			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int);
+			variantInfo.iValue = hParams.GetObjectVar(paramNum, 0, ObjectValueType_Int);
 			variantInfo.variantType = EntityIO_VariantType_Character;
 		}
 		
 		case FIELDTYPE_COLOR32:
 		{
-			int color = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Int);
+			int color = hParams.GetObjectVar(paramNum, 0, ObjectValueType_Int);
 			variantInfo.clrValue[0] = color & 0xFF;
 			variantInfo.clrValue[1] = (color >> 8) & 0xFF;
 			variantInfo.clrValue[2] = (color >> 16) & 0xFF;
@@ -573,19 +536,19 @@ public MRESReturn DHook_AcceptInput_Post(int pThis, Handle hReturn, Handle hPara
 		
 		case FIELDTYPE_CLASSPTR:
 		{
-			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_CBaseEntityPtr);
+			variantInfo.iValue = hParams.GetObjectVar(paramNum, 0, ObjectValueType_CBaseEntityPtr);
 			variantInfo.variantType = EntityIO_VariantType_Entity;
 		}
 		
 		case FIELDTYPE_EHANDLE:
 		{
-			variantInfo.iValue = DHookGetParamObjectPtrVar(hParams, 4, 0, ObjectValueType_Ehandle);
+			variantInfo.iValue = hParams.GetObjectVar(paramNum, 0, ObjectValueType_Ehandle);
 			variantInfo.variantType = EntityIO_VariantType_Entity;
 		}
 		
 		case FIELDTYPE_POSITION_VECTOR:
 		{
-			DHookGetParamObjectPtrVarVector(hParams, 4, 0, ObjectValueType_Vector, variantInfo.vecValue);
+			hParams.GetObjectVarVector(paramNum, 0, ObjectValueType_Vector, variantInfo.vecValue);
 			variantInfo.variantType = EntityIO_VariantType_PosVector;
 		}
 		
@@ -593,50 +556,6 @@ public MRESReturn DHook_AcceptInput_Post(int pThis, Handle hReturn, Handle hPara
 		{
 			variantInfo.variantType = EntityIO_VariantType_None;
 		}
-	}
-	
-	int actionId = DHookGetParam(hParams, 5);	
-	
-	Call_StartForward(g_Forward_OnEntityInput_Post);
-	Call_PushCell(pThis);
-	Call_PushString(input);
-	Call_PushCell(activator);
-	Call_PushCell(caller);
-	Call_PushArray(variantInfo, sizeof(EntityIO_VariantInfo));
-	Call_PushCell(actionId);
-	Call_Finish();
-	
-	return MRES_Ignored;
-}
-
-void GetBaseEntityMapData(Address dataMap)
-{
-	Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
-	if (dataDesc)
-	{
-		int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
-		for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
-		{
-			char externalName[256];
-			GetStringFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldName), externalName, sizeof(externalName));
-			
-			int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
-			if (view_as<bool>(flags & FIELDTYPE_DESC_INPUT))
-			{
-				g_List_BaseEntityInputs.PushString(externalName);
-			}
-			
-			if (view_as<bool>(flags & FIELDTYPE_DESC_OUTPUT))
-			{
-				OutputInfo outputInfo;
-				outputInfo.offset = view_as<int>(LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldOffset), NumberType_Int32));
-				strcopy(outputInfo.output, sizeof(OutputInfo::output), externalName);
-				
-				g_List_BaseEntityOutputs.PushArray(outputInfo);
-			}
-		}
-		
-		g_IsBaseEntityMapDataRetrieved = true;
 	}
 }
 
@@ -678,12 +597,12 @@ int GetStringFromAddress(Address address, char[] buffer, int maxLen)
 	return i;
 }
 
-public int Native_HasEntityInput(Handle plugin, int numParams)
+public any Native_HasEntityInput(Handle plugin, int numParams)
 {
 	int entity = GetNativeCell(1);
 	if (!IsValidEntity(entity))
 	{
-		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid entity index %d", entity);
+		return ThrowNativeError(SP_ERROR_NATIVE, "Entity %d (%d) is invalid", EntIndexToEntRef(entity), entity);
 	}
 	
 	char input[256];
@@ -700,45 +619,40 @@ public int Native_HasEntityInput(Handle plugin, int numParams)
 		char className[256];
 		GetStringFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), className, sizeof(className));
 		
-		// do not search in BaseEntity map
 		if (StrEqual(className, "CBaseEntity", true))
 		{
-			if (!g_IsBaseEntityMapDataRetrieved)
-			{
-				GetBaseEntityMapData(dataMap);
-			}
-			
-			break;
+			GetBaseEntityIO(dataMap);
 		}
-		
-		Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
-		if (dataDesc)
+		else
 		{
-			int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
-			for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
+			Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
+			if (dataDesc)
 			{
-				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
-				if (!view_as<bool>(flags & FIELDTYPE_DESC_INPUT))
+				int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
+				for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
 				{
-					continue;
+					int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
+					if (!view_as<bool>(flags & FIELDTYPE_DESC_INPUT))
+					{
+						continue;
+					}
+					
+					char externalName[256];
+					GetStringFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldName), externalName, sizeof(externalName));
+					
+					if (!StrEqual(input, externalName, false))
+					{
+						continue;
+					}
+					
+					return true;
 				}
-				
-				char externalName[256];
-				GetStringFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldName), externalName, sizeof(externalName));
-				
-				if (!StrEqual(input, externalName, false))
-				{
-					continue;
-				}
-				
-				return true;
 			}
 		}
 		
 		dataMap = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataBaseMap), NumberType_Int32));
 	}
 	
-	// search in BaseEntity inputs
 	char baseInput[256];
 	for (int i = 0; g_List_BaseEntityInputs.Length; i++)
 	{
@@ -754,12 +668,12 @@ public int Native_HasEntityInput(Handle plugin, int numParams)
 	return false;
 }
 
-public int Native_FindEntityFirstInput(Handle plugin, int numParams)
+public any Native_FindEntityFirstInput(Handle plugin, int numParams)
 {
 	int entity = GetNativeCell(1);
 	if (!IsValidEntity(entity))
 	{
-		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid entity index %d", entity);
+		return ThrowNativeError(SP_ERROR_NATIVE, "Entity %d (%d) is invalid", EntIndexToEntRef(entity), entity);
 	}
 	
 	Address dataMap = view_as<Address>(SDKCall(g_SDKCall_GetDataDescMap, entity));
@@ -768,54 +682,55 @@ public int Native_FindEntityFirstInput(Handle plugin, int numParams)
 		char className[256];
 		GetStringFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), className, sizeof(className));
 		
-		// do not search in BaseEntity map
 		if (StrEqual(className, "CBaseEntity", true))
 		{
-			if (!g_IsBaseEntityMapDataRetrieved)
-			{
-				GetBaseEntityMapData(dataMap);
-			}
-			
-			break;
+			GetBaseEntityIO(dataMap);
 		}
-		
-		Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
-		if (dataDesc)
+		else
 		{
-			int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
-			for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
+			Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
+			if (dataDesc)
 			{
-				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
-				if (!view_as<bool>(flags & FIELDTYPE_DESC_INPUT))
+				int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
+				for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
 				{
-					continue;
+					int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
+					if (!view_as<bool>(flags & FIELDTYPE_DESC_INPUT))
+					{
+						continue;
+					}
+					
+					StringMap iterator = new StringMap();
+					iterator.SetValue("dataIndex", i);
+					iterator.SetValue("dataMap", dataMap);
+					iterator.SetValue("dataDesc", dataDesc);
+					
+					Handle clone = CloneHandle(iterator, plugin);
+					delete iterator;
+					
+					return clone;
 				}
-				
-				StringMap iterator = new StringMap();
-				iterator.SetValue("dataIndex", i);
-				iterator.SetValue("dataMap", dataMap);
-				iterator.SetValue("dataDesc", dataDesc);
-				
-				return view_as<int>(iterator);
 			}
 		}
 		
 		dataMap = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataBaseMap), NumberType_Int32));
 	}
 	
-	// search in BaseEntity inputs
 	if (g_List_BaseEntityInputs.Length)
 	{
 		StringMap iterator = new StringMap();
 		iterator.SetValue("dataMap", Address_Null);
 		
-		return view_as<int>(iterator);
+		Handle clone = CloneHandle(iterator, plugin);
+		delete iterator;
+		
+		return clone;
 	}
 	
-	return view_as<int>(INVALID_HANDLE);
+	return INVALID_HANDLE;
 }
 
-public int Native_FindEntityNextInput(Handle plugin, int numParams)
+public any Native_FindEntityNextInput(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -845,34 +760,30 @@ public int Native_FindEntityNextInput(Handle plugin, int numParams)
 		char className[256];
 		GetStringFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), className, sizeof(className));
 		
-		// do not search in BaseEntity map
 		if (StrEqual(className, "CBaseEntity", true))
 		{
-			if (!g_IsBaseEntityMapDataRetrieved)
-			{
-				GetBaseEntityMapData(dataMap);
-			}
-			
-			break;
+			GetBaseEntityIO(dataMap);
 		}
-		
-		Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
-		if (dataDesc)
+		else
 		{
-			int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
-			for (int i = dataIndex; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
+			Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
+			if (dataDesc)
 			{
-				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
-				if (!view_as<bool>(flags & FIELDTYPE_DESC_INPUT))
+				int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
+				for (int i = dataIndex; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
 				{
-					continue;
+					int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
+					if (!view_as<bool>(flags & FIELDTYPE_DESC_INPUT))
+					{
+						continue;
+					}
+					
+					iterator.SetValue("dataIndex", i);
+					iterator.SetValue("dataMap", dataMap);
+					iterator.SetValue("dataDesc", dataDesc);
+					
+					return true;
 				}
-				
-				iterator.SetValue("dataIndex", i);
-				iterator.SetValue("dataMap", dataMap);
-				iterator.SetValue("dataDesc", dataDesc);
-				
-				return true;
 			}
 		}
 		
@@ -880,7 +791,6 @@ public int Native_FindEntityNextInput(Handle plugin, int numParams)
 		dataMap = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataBaseMap), NumberType_Int32));
 	}
 	
-	// search in BaseEntity inputs
 	for (int i = baseIndex; i < g_List_BaseEntityInputs.Length; i++)
 	{
 		iterator.SetValue("baseIndex", i);
@@ -892,7 +802,7 @@ public int Native_FindEntityNextInput(Handle plugin, int numParams)
 	return false;
 }
 
-public int Native_GetEntityInputName(Handle plugin, int numParams)
+public any Native_GetEntityInputName(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -927,12 +837,12 @@ public int Native_GetEntityInputName(Handle plugin, int numParams)
 	return length;
 }
 
-public int Native_HasEntityOutput(Handle plugin, int numParams)
+public any Native_HasEntityOutput(Handle plugin, int numParams)
 {
 	int entity = GetNativeCell(1);
 	if (!IsValidEntity(entity))
 	{
-		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid entity index %d", entity);
+		return ThrowNativeError(SP_ERROR_NATIVE, "Entity %d (%d) is invalid", EntIndexToEntRef(entity), entity);
 	}
 	
 	char output[256];
@@ -949,45 +859,40 @@ public int Native_HasEntityOutput(Handle plugin, int numParams)
 		char className[256];
 		GetStringFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), className, sizeof(className));
 		
-		// do not search in BaseEntity map
 		if (StrEqual(className, "CBaseEntity", true))
 		{
-			if (!g_IsBaseEntityMapDataRetrieved)
-			{
-				GetBaseEntityMapData(dataMap);
-			}
-			
-			break;
+			GetBaseEntityIO(dataMap);
 		}
-		
-		Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
-		if (dataDesc)
+		else
 		{
-			int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
-			for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
+			Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
+			if (dataDesc)
 			{
-				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
-				if (!view_as<bool>(flags & FIELDTYPE_DESC_OUTPUT))
+				int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
+				for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
 				{
-					continue;
+					int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
+					if (!view_as<bool>(flags & FIELDTYPE_DESC_OUTPUT))
+					{
+						continue;
+					}
+					
+					char externalName[256];
+					GetStringFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldName), externalName, sizeof(externalName));
+					
+					if (!StrEqual(output, externalName, false))
+					{
+						continue;
+					}
+					
+					return true;
 				}
-				
-				char externalName[256];
-				GetStringFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldName), externalName, sizeof(externalName));
-				
-				if (!StrEqual(output, externalName, false))
-				{
-					continue;
-				}
-				
-				return true;
 			}
 		}
 		
 		dataMap = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataBaseMap), NumberType_Int32));
 	}
 	
-	// search in BaseEntity outputs
 	OutputInfo outputInfo;
 	for (int i = 0; i < g_List_BaseEntityOutputs.Length; i++)
 	{
@@ -1003,12 +908,12 @@ public int Native_HasEntityOutput(Handle plugin, int numParams)
 	return false;
 }
 
-public int Native_FindEntityOutputOffset(Handle plugin, int numParams)
+public any Native_FindEntityOutputOffset(Handle plugin, int numParams)
 {
 	int entity = GetNativeCell(1);
 	if (!IsValidEntity(entity))
 	{
-		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid entity index %d", entity);
+		return ThrowNativeError(SP_ERROR_NATIVE, "Entity %d (%d) is invalid", EntIndexToEntRef(entity), entity);
 	}
 	
 	char output[256];
@@ -1020,45 +925,40 @@ public int Native_FindEntityOutputOffset(Handle plugin, int numParams)
 		char className[256];
 		GetStringFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), className, sizeof(className));
 		
-		// do not search in BaseEntity map
 		if (StrEqual(className, "CBaseEntity", true))
 		{
-			if (!g_IsBaseEntityMapDataRetrieved)
-			{
-				GetBaseEntityMapData(dataMap);
-			}
-			
-			break;
+			GetBaseEntityIO(dataMap);
 		}
-		
-		Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
-		if (dataDesc)
+		else
 		{
-			int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
-			for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
+			Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
+			if (dataDesc)
 			{
-				int flags = LoadFromAddress(dataDesc + view_as<Address>(g_Offset_DataFieldFlags + i), NumberType_Int32);
-				if (!view_as<bool>(flags & FIELDTYPE_DESC_OUTPUT))
+				int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
+				for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
 				{
-					continue;
+					int flags = LoadFromAddress(dataDesc + view_as<Address>(g_Offset_DataFieldFlags + i), NumberType_Int32);
+					if (!view_as<bool>(flags & FIELDTYPE_DESC_OUTPUT))
+					{
+						continue;
+					}
+					
+					char externalName[256];
+					GetStringFromAddress(dataDesc + view_as<Address>(g_Offset_DataFieldName + i), externalName, sizeof(externalName));
+					
+					if (!StrEqual(output, externalName, false))
+					{
+						continue;
+					}
+					
+					return view_as<int>(LoadFromAddress(dataDesc + view_as<Address>(g_Offset_DataFieldOffset + i), NumberType_Int32));
 				}
-				
-				char externalName[256];
-				GetStringFromAddress(dataDesc + view_as<Address>(g_Offset_DataFieldName + i), externalName, sizeof(externalName));
-				
-				if (!StrEqual(output, externalName, false))
-				{
-					continue;
-				}
-				
-				return view_as<int>(LoadFromAddress(dataDesc + view_as<Address>(g_Offset_DataFieldOffset + i), NumberType_Int32));
 			}
 		}
 		
 		dataMap = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataBaseMap), NumberType_Int32));
 	}
 	
-	// search in BaseEntity outputs
 	OutputInfo outputInfo;
 	for (int i = 0; i < g_List_BaseEntityOutputs.Length; i++)
 	{
@@ -1074,12 +974,12 @@ public int Native_FindEntityOutputOffset(Handle plugin, int numParams)
 	return -1;
 }
 
-public int Native_FindEntityFirstOutput(Handle plugin, int numParams)
+public any Native_FindEntityFirstOutput(Handle plugin, int numParams)
 {
 	int entity = GetNativeCell(1);
 	if (!IsValidEntity(entity))
 	{
-		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid entity index %d", entity);
+		return ThrowNativeError(SP_ERROR_NATIVE, "Entity %d (%d) is invalid", EntIndexToEntRef(entity), entity);
 	}
 	
 	Address dataMap = view_as<Address>(SDKCall(g_SDKCall_GetDataDescMap, entity));
@@ -1088,54 +988,55 @@ public int Native_FindEntityFirstOutput(Handle plugin, int numParams)
 		char className[256];
 		GetStringFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), className, sizeof(className));
 		
-		// do not search in BaseEntity map
 		if (StrEqual(className, "CBaseEntity", true))
 		{
-			if (!g_IsBaseEntityMapDataRetrieved)
-			{
-				GetBaseEntityMapData(dataMap);
-			}
-			
-			break;
+			GetBaseEntityIO(dataMap);
 		}
-		
-		Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
-		if (dataDesc)
+		else
 		{
-			int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
-			for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
+			Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
+			if (dataDesc)
 			{
-				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
-				if (!view_as<bool>(flags & FIELDTYPE_DESC_OUTPUT))
+				int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
+				for (int i = 0; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
 				{
-					continue;
+					int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
+					if (!view_as<bool>(flags & FIELDTYPE_DESC_OUTPUT))
+					{
+						continue;
+					}
+					
+					StringMap iterator = new StringMap();
+					iterator.SetValue("dataIndex", i);
+					iterator.SetValue("dataMap", dataMap);
+					iterator.SetValue("dataDesc", dataDesc);
+					
+					Handle clone = CloneHandle(iterator, plugin);
+					delete iterator;
+					
+					return clone;
 				}
-				
-				StringMap iterator = new StringMap();
-				iterator.SetValue("dataIndex", i);
-				iterator.SetValue("dataMap", dataMap);
-				iterator.SetValue("dataDesc", dataDesc);
-				
-				return view_as<int>(iterator);
 			}
 		}
 		
 		dataMap = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataBaseMap), NumberType_Int32));
 	}
 	
-	// search in BaseEntity outputs
 	if (g_List_BaseEntityOutputs.Length)
 	{
 		StringMap iterator = new StringMap();
 		iterator.SetValue("dataMap", Address_Null);
 		
-		return view_as<int>(iterator);
+		Handle clone = CloneHandle(iterator, plugin);
+		delete iterator;
+		
+		return clone;
 	}
 	
-	return view_as<int>(INVALID_HANDLE);
+	return INVALID_HANDLE;
 }
 
-public int Native_FindEntityNextOutput(Handle plugin, int numParams)
+public any Native_FindEntityNextOutput(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -1165,34 +1066,30 @@ public int Native_FindEntityNextOutput(Handle plugin, int numParams)
 		char className[256];
 		GetStringFromAddress(dataMap + view_as<Address>(g_Offset_DataClassName), className, sizeof(className));
 		
-		// do not search in BaseEntity map
 		if (StrEqual(className, "CBaseEntity", true))
 		{
-			if (!g_IsBaseEntityMapDataRetrieved)
-			{
-				GetBaseEntityMapData(dataMap);
-			}
-			
-			break;
+			GetBaseEntityIO(dataMap);
 		}
-		
-		Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
-		if (dataDesc)
+		else
 		{
-			int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
-			for (int i = dataIndex; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
+			Address dataDesc = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataDescMap), NumberType_Int32));
+			if (dataDesc)
 			{
-				int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
-				if (!view_as<bool>(flags & FIELDTYPE_DESC_OUTPUT))
+				int numFields = LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataNumFields), NumberType_Int32);
+				for (int i = dataIndex; i < numFields * g_Offset_DataFieldSize; i += g_Offset_DataFieldSize)
 				{
-					continue;
+					int flags = LoadFromAddress(dataDesc + view_as<Address>(i + g_Offset_DataFieldFlags), NumberType_Int32);
+					if (!view_as<bool>(flags & FIELDTYPE_DESC_OUTPUT))
+					{
+						continue;
+					}
+					
+					iterator.SetValue("dataIndex", i);
+					iterator.SetValue("dataMap", dataMap);
+					iterator.SetValue("dataDesc", dataDesc);
+					
+					return true;
 				}
-				
-				iterator.SetValue("dataIndex", i);
-				iterator.SetValue("dataMap", dataMap);
-				iterator.SetValue("dataDesc", dataDesc);
-				
-				return true;
 			}
 		}
 		
@@ -1200,7 +1097,6 @@ public int Native_FindEntityNextOutput(Handle plugin, int numParams)
 		dataMap = view_as<Address>(LoadFromAddress(dataMap + view_as<Address>(g_Offset_DataBaseMap), NumberType_Int32));
 	}
 	
-	// search in BaseEntity outputs
 	for (int i = baseIndex; i < g_List_BaseEntityOutputs.Length; i++)
 	{
 		iterator.SetValue("baseIndex", i);
@@ -1212,7 +1108,7 @@ public int Native_FindEntityNextOutput(Handle plugin, int numParams)
 	return false;
 }
 
-public int Native_GetEntityOutputName(Handle plugin, int numParams)
+public any Native_GetEntityOutputName(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -1250,7 +1146,7 @@ public int Native_GetEntityOutputName(Handle plugin, int numParams)
 	return length;
 }
 
-public int Native_GetEntityOutputOffset(Handle plugin, int numParams)
+public any Native_GetEntityOutputOffset(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -1279,12 +1175,12 @@ public int Native_GetEntityOutputOffset(Handle plugin, int numParams)
 	return outputInfo.offset;
 }
 
-public int Native_AddEntityOutputAction(Handle plugin, int numParams)
+public any Native_AddEntityOutputAction(Handle plugin, int numParams)
 {
 	int entity = GetNativeCell(1);
 	if (!IsValidEntity(entity))
 	{
-		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid entity index %d", entity);
+		return ThrowNativeError(SP_ERROR_NATIVE, "Entity %d (%d) is invalid", EntIndexToEntRef(entity), entity);
 	}
 	
 	int maxLen = 256;
@@ -1312,12 +1208,12 @@ public int Native_AddEntityOutputAction(Handle plugin, int numParams)
 	return AcceptEntityInput(entity, "AddOutput");
 }
 
-public int Native_FindEntityFirstOutputAction(Handle plugin, int numParams)
+public any Native_FindEntityFirstOutputAction(Handle plugin, int numParams)
 {
 	int entity = GetNativeCell(1);
 	if (!IsValidEntity(entity))
 	{
-		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid entity index %d", entity);
+		return ThrowNativeError(SP_ERROR_NATIVE, "Entity %d (%d) is invalid", EntIndexToEntRef(entity), entity);
 	}
 	
 	int offset = GetNativeCell(2);
@@ -1335,14 +1231,17 @@ public int Native_FindEntityFirstOutputAction(Handle plugin, int numParams)
 			StringMap iterator = new StringMap();
 			iterator.SetValue("actionAddress", address);
 			
-			return view_as<int>(iterator);
+			Handle clone = CloneHandle(iterator, plugin);
+			delete iterator;
+			
+			return clone;
 		}
 	}
 	
-	return view_as<int>(INVALID_HANDLE);
+	return INVALID_HANDLE;
 }
 
-public int Native_FindEntityNextOutputAction(Handle plugin, int numParams)
+public any Native_FindEntityNextOutputAction(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -1363,7 +1262,7 @@ public int Native_FindEntityNextOutputAction(Handle plugin, int numParams)
 	return false;
 }
 
-public int Native_GetEntityOutputActionTarget(Handle plugin, int numParams)
+public any Native_GetEntityOutputActionTarget(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -1384,7 +1283,7 @@ public int Native_GetEntityOutputActionTarget(Handle plugin, int numParams)
 	return length;
 }
 
-public int Native_GetEntityOutputActionInput(Handle plugin, int numParams)
+public any Native_GetEntityOutputActionInput(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -1405,7 +1304,7 @@ public int Native_GetEntityOutputActionInput(Handle plugin, int numParams)
 	return length;
 }
 
-public int Native_GetEntityOutputActionParam(Handle plugin, int numParams)
+public any Native_GetEntityOutputActionParam(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -1426,7 +1325,7 @@ public int Native_GetEntityOutputActionParam(Handle plugin, int numParams)
 	return length;
 }
 
-public int Native_GetEntityOutputActionDelay(Handle plugin, int numParams)
+public any Native_GetEntityOutputActionDelay(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -1440,7 +1339,7 @@ public int Native_GetEntityOutputActionDelay(Handle plugin, int numParams)
 	return view_as<int>(LoadFromAddress(address + view_as<Address>(g_Offset_ActionDelay), NumberType_Int32));
 }
 
-public int Native_GetEntityOutputActionTimesToFire(Handle plugin, int numParams)
+public any Native_GetEntityOutputActionTimesToFire(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -1454,7 +1353,7 @@ public int Native_GetEntityOutputActionTimesToFire(Handle plugin, int numParams)
 	return view_as<int>(LoadFromAddress(address + view_as<Address>(g_Offset_ActionTimesToFire), NumberType_Int32));
 }
 
-public int Native_GetEntityOutputActionID(Handle plugin, int numParams)
+public any Native_GetEntityOutputActionID(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -1468,7 +1367,7 @@ public int Native_GetEntityOutputActionID(Handle plugin, int numParams)
 	return view_as<int>(LoadFromAddress(address + view_as<Address>(g_Offset_ActionIDStamp), NumberType_Int32));
 }
 
-public int Native_SetEntityOutputActionTarget(Handle plugin, int numParams)
+public any Native_SetEntityOutputActionTarget(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -1486,7 +1385,7 @@ public int Native_SetEntityOutputActionTarget(Handle plugin, int numParams)
 	return 0;
 }
 
-public int Native_SetEntityOutputActionInput(Handle plugin, int numParams)
+public any Native_SetEntityOutputActionInput(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -1504,7 +1403,7 @@ public int Native_SetEntityOutputActionInput(Handle plugin, int numParams)
 	return 0;
 }
 
-public int Native_SetEntityOutputActionParam(Handle plugin, int numParams)
+public any Native_SetEntityOutputActionParam(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -1522,7 +1421,7 @@ public int Native_SetEntityOutputActionParam(Handle plugin, int numParams)
 	return 0;
 }
 
-public int Native_SetEntityOutputActionDelay(Handle plugin, int numParams)
+public any Native_SetEntityOutputActionDelay(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -1539,7 +1438,7 @@ public int Native_SetEntityOutputActionDelay(Handle plugin, int numParams)
 	return 0;
 }
 
-public int Native_SetEntityOutputActionTimesToFire(Handle plugin, int numParams)
+public any Native_SetEntityOutputActionTimesToFire(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
@@ -1556,7 +1455,7 @@ public int Native_SetEntityOutputActionTimesToFire(Handle plugin, int numParams)
 	return 0;
 }
 
-public int Native_SetEntityOutputActionID(Handle plugin, int numParams)
+public any Native_SetEntityOutputActionID(Handle plugin, int numParams)
 {
 	StringMap iterator = view_as<StringMap>(GetNativeCell(1));
 	if (!iterator)
