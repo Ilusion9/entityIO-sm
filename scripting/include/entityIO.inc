@@ -6,25 +6,25 @@
 enum EntityIO_VariantType
 {
 	EntityIO_VariantType_None,
-	EntityIO_VariantType_Float,
-	EntityIO_VariantType_String,
-	EntityIO_VariantType_Vector,
-	EntityIO_VariantType_Integer,
 	EntityIO_VariantType_Boolean,
 	EntityIO_VariantType_Character,
 	EntityIO_VariantType_Color,
 	EntityIO_VariantType_Entity,
-	EntityIO_VariantType_PosVector
+	EntityIO_VariantType_Float,
+	EntityIO_VariantType_Integer,
+	EntityIO_VariantType_PosVector,
+	EntityIO_VariantType_String,
+	EntityIO_VariantType_Vector
 }
 
 enum struct EntityIO_VariantInfo
 {
 	bool bValue;
 	int iValue;
-	float flValue;
-	char sValue[256];
 	int clrValue[4];
+	float flValue;
 	float vecValue[3];
+	char sValue[256];
 	EntityIO_VariantType variantType;
 }
 
@@ -58,7 +58,7 @@ forward void EntityIO_OnEntityInput_Post(int entity, const char[] input, int act
  *
  * @param entity        Entity's index.
  * @param input         Input's name.
- * @error               Invalid entity index.
+ * @error               Invalid entity.
  * @return              True if the input can be accepted, false otherwise.
  */
 native bool EntityIO_HasEntityInput(int entity, const char[] input);
@@ -67,7 +67,7 @@ native bool EntityIO_HasEntityInput(int entity, const char[] input);
  * Retrieves the first input from an entity.
  *
  * @param entity        Entity's index.
- * @error               Invalid entity index.
+ * @error               Invalid entity.
  * @return              On succes, a Handle is returned, which must be closed via CloseHandle(). On failure, INVALID_HANDLE is returned.
  */
 native Handle EntityIO_FindEntityFirstInput(int entity);
@@ -97,7 +97,7 @@ native int EntityIO_GetEntityInputName(Handle iterator, char[] input, int maxLen
  *
  * @param entity        Entity's index.
  * @param output        Output's name.
- * @error               Invalid entity index.
+ * @error               Invalid entity.
  * @return              True if the output can be fired, false otherwise.
  */
 native bool EntityIO_HasEntityOutput(int entity, const char[] output);
@@ -107,7 +107,7 @@ native bool EntityIO_HasEntityOutput(int entity, const char[] output);
  *
  * @param entity        Entity's index.
  * @param output        Output's name.
- * @error               Invalid entity index.
+ * @error               Invalid entity.
  * @return              Output's offset, -1 on failure.
  */
 native int EntityIO_FindEntityOutputOffset(int entity, const char[] output);
@@ -116,7 +116,7 @@ native int EntityIO_FindEntityOutputOffset(int entity, const char[] output);
  * Retrieves the first output from an entity.
  *
  * @param entity        Entity's index.
- * @error               Invalid entity index.
+ * @error               Invalid entity.
  * @return              On succes, a Handle is returned, which must be closed via CloseHandle(). On failure, INVALID_HANDLE is returned.
  */
 native Handle EntityIO_FindEntityFirstOutput(int entity);
@@ -161,7 +161,7 @@ native int EntityIO_GetEntityOutputOffset(Handle iterator);
  * @param delay              Action's delay.
  * @param timesToFire        Action's times to fire, -1 for infinite times.
  * @return                   True if the action has been added, false otherwise.
- * @error                    Invalid entity index.
+ * @error                    Invalid entity.
  */
 native bool EntityIO_AddEntityOutputAction(int entity, const char[] output, const char[] target, const char[] input, const char[] param, float delay, int timesToFire);
 
@@ -170,7 +170,7 @@ native bool EntityIO_AddEntityOutputAction(int entity, const char[] output, cons
  *
  * @param entity        Entity's index.
  * @param offset        Output's offset.
- * @error               Invalid entity index, invalid output offset.
+ * @error               Invalid entity, invalid output offset.
  * @return              On succes, a Handle is returned, which must be closed via CloseHandle(). On failure, INVALID_HANDLE is returned.
  */
 native Handle EntityIO_FindEntityFirstOutputAction(int entity, int offset);
