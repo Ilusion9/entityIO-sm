@@ -146,6 +146,26 @@
 		}
 	}
 	
+	"cstrike"
+	{
+		"Offsets"
+		{
+			"typedescription_t::externalName"
+			{
+				"windows"		"20"
+				"linux"			"24"
+				"mac"			"24"
+			}
+			
+			"sizeof::typedescription_t"
+			{
+				"windows"		"52"
+				"linux"			"56"
+				"mac"			"56"
+			}
+		}
+	}
+	
 	"csgo"
 	{
 		"Offsets"
